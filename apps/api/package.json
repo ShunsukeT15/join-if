@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
-    "start": "tsx src/main.ts",
-    "migrate": "tsx src/infrastructure/persistence/postgres/migrate.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
+    "start": "tsx --env-file-if-exists=.env src/main.ts",
+    "migrate": "tsx --env-file-if-exists=.env src/infrastructure/persistence/postgres/migrate.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gen-key": "tsx src/genKey.ts"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.16",

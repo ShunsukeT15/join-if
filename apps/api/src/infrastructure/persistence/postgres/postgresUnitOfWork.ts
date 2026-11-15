@@ -1,0 +1,263 @@
+import type { Tx, UnitOfWork } from '../../../application/ports/persistence.js';
+import { notFound } from '../../../domain/errors.js';
+import type { Answer, AuditEvent, Choice, Member, Result, Room, RoomStatus } from '../../../domain/types.js';
+import type { SqlClient, SqlPool } from './pgClient.js';
+
+interface RoomRow {
+  id: string;
+  title: string;
+  deadline_text: string;
+  message: string;
+  status: RoomStatus;
+  admin_token_hash: string;
+  created_at: Date;
+  closed_at: Date | null;
+  purge_after: Date;
+}
+interface MemberRow {
+  id: string;
+  room_id: string;
+  display_name: string;
+  invite_token_hash: string;
+  invite_token_enc: string | null;
+  invite_used_at: Date | null;
+  member_token_hash: string | null;
+  sort_order: number;
+  created_at: Date;
+}
+interface AnswerRow {
+  member_id: string;
+  choice: Choice;
+  cond_people: string[];
+  cond_need: number;
+  cond_min_total: number;
+  updated_at: Date;
+}
+
+const toDate = (v: Date | string): Date => (v instanceof Date ? v : new Date(v));
+const toDateOrNull = (v: Date | string | null): Date | null => (v === null ? null : toDate(v));
+
+const room = (r: RoomRow): Room => ({
+  id: r.id,
+  title: r.title,
+  deadlineText: r.deadline_text,
+  message: r.message,
+  status: r.status,
+  adminTokenHash: r.admin_token_hash,
+  createdAt: toDate(r.created_at),
+  closedAt: toDateOrNull(r.closed_at),
+  purgeAfter: toDate(r.purge_after),
+});
+
+const member = (r: MemberRow): Member => ({
+  id: r.id,
+  roomId: r.room_id,
+  displayName: r.display_name,
+  inviteTokenHash: r.invite_token_hash,
+  inviteTokenEnc: r.invite_token_enc,
+  inviteUsedAt: toDateOrNull(r.invite_used_at),
+  memberTokenHash: r.member_token_hash,
+  sortOrder: r.sort_order,
+  createdAt: toDate(r.created_at),
+});
+
+const answer = (r: AnswerRow): Answer => ({
+  memberId: r.member_id,
+  choice: r.choice,
+  condPeople: r.cond_people ?? [],
+  condNeed: r.cond_need,
+  condMinTotal: r.cond_min_total,
+  updatedAt: toDate(r.updated_at),
+});
+
+const MEMBER_COLS =
+  'id, room_id, display_name, invite_token_hash, invite_token_enc, invite_used_at, member_token_hash, sort_order, created_at';
+
+function makeTx(db: SqlClient): Tx {
+  return {
+    rooms: {
+      async insert(r) {
+        await db.query(
+          `insert into rooms (id, title, deadline_text, message, status, admin_token_hash, created_at, closed_at, purge_after)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [r.id, r.title, r.deadlineText, r.message, r.status, r.adminTokenHash, r.createdAt, r.closedAt, r.purgeAfter],
+        );
+      },
+      async findById(id) {
+        const { rows } = await db.query<RoomRow>('select * from rooms where id = $1', [id]);
+        return rows[0] ? room(rows[0]) : null;
+      },
+      async update(r) {
+        const { rowCount } = await db.query(
+          `update rooms set title=$2, deadline_text=$3, message=$4, status=$5, closed_at=$6, purge_after=$7 where id=$1`,
+          [r.id, r.title, r.deadlineText, r.message, r.status, r.closedAt, r.purgeAfter],
+        );
+        if (rowCount === 0) throw notFound();
+      },
+      async deleteExpired(now) {
+        const { rowCount } = await db.query('delete from rooms where purge_after <= $1', [now]);
+        return rowCount;
+      },
+    },
+    members: {
+      async listByRoom(roomId) {
+        const { rows } = await db.query<MemberRow>(
+          `select ${MEMBER_COLS} from members where room_id = $1 order by sort_order, created_at`,
+          [roomId],
+        );
+        return rows.map(member);
+      },
+      async findInRoom(roomId, memberId) {
+        const { rows } = await db.query<MemberRow>(
+          `select ${MEMBER_COLS} from members where room_id = $1 and id = $2::uuid`,
+          [roomId, memberId],
+        );
+        return rows[0] ? member(rows[0]) : null;
+      },
+      async findByInviteTokenHash(hash) {
+        const { rows } = await db.query<MemberRow>(`select ${MEMBER_COLS} from members where invite_token_hash = $1`, [hash]);
+        return rows[0] ? member(rows[0]) : null;
+      },
+      async findByMemberTokenHash(hash) {
+        const { rows } = await db.query<MemberRow>(`select ${MEMBER_COLS} from members where member_token_hash = $1`, [hash]);
+        return rows[0] ? member(rows[0]) : null;
+      },
+      async countByRoom(roomId) {
+        const { rows } = await db.query<{ n: number }>('select count(*)::int as n from members where room_id = $1', [roomId]);
+        return rows[0]?.n ?? 0;
+      },
+      async insert(m) {
+        await db.query(
+          `insert into members (${MEMBER_COLS}) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [m.id, m.roomId, m.displayName, m.inviteTokenHash, m.inviteTokenEnc, m.inviteUsedAt, m.memberTokenHash, m.sortOrder, m.createdAt],
+        );
+      },
+      async update(m) {
+        const { rowCount } = await db.query(
+          `update members set display_name=$3, invite_token_hash=$4, invite_token_enc=$5, invite_used_at=$6,
+             member_token_hash=$7, sort_order=$8
+           where room_id=$1 and id=$2::uuid`,
+          [m.roomId, m.id, m.displayName, m.inviteTokenHash, m.inviteTokenEnc, m.inviteUsedAt, m.memberTokenHash, m.sortOrder],
+        );
+        if (rowCount === 0) throw notFound();
+      },
+      async delete(roomId, memberId) {
+        await db.query('delete from members where room_id = $1 and id = $2::uuid', [roomId, memberId]);
+      },
+      async claimInvite(roomId, memberId, memberTokenHash, usedAt) {
+        const { rowCount } = await db.query(
+          `update members set member_token_hash=$3, invite_used_at=$4, invite_token_enc=null
+           where room_id=$1 and id=$2::uuid and invite_used_at is null`,
+          [roomId, memberId, memberTokenHash, usedAt],
+        );
+        return rowCount === 1;
+      },
+    },
+    answers: {
+      async findByMember(memberId) {
+        const { rows } = await db.query<AnswerRow>('select * from answers where member_id = $1::uuid', [memberId]);
+        return rows[0] ? answer(rows[0]) : null;
+      },
+      async listByRoom(roomId) {
+        const { rows } = await db.query<AnswerRow>(
+          `select a.* from answers a join members m on m.id = a.member_id where m.room_id = $1`,
+          [roomId],
+        );
+        return rows.map(answer);
+      },
+      async upsert(a) {
+        await db.query(
+          `insert into answers (member_id, choice, cond_people, cond_need, cond_min_total, updated_at)
+           values ($1::uuid, $2, $3::uuid[], $4, $5, $6)
+           on conflict (member_id) do update set choice=excluded.choice, cond_people=excluded.cond_people,
+             cond_need=excluded.cond_need, cond_min_total=excluded.cond_min_total, updated_at=excluded.updated_at`,
+          [a.memberId, a.choice, a.condPeople, a.condNeed, a.condMinTotal, a.updatedAt],
+        );
+      },
+      async delete(memberId) {
+        await db.query('delete from answers where member_id = $1::uuid', [memberId]);
+      },
+    },
+    results: {
+      async find(roomId) {
+        const { rows } = await db.query<{ room_id: string; attending: string[]; computed_at: Date }>(
+          'select * from results where room_id = $1',
+          [roomId],
+        );
+        const r = rows[0];
+        return r ? ({ roomId: r.room_id, attending: r.attending ?? [], computedAt: toDate(r.computed_at) } satisfies Result) : null;
+      },
+      async save(r) {
+        await db.query(
+          `insert into results (room_id, attending, computed_at) values ($1, $2::uuid[], $3)
+           on conflict (room_id) do update set attending=excluded.attending, computed_at=excluded.computed_at`,
+          [r.roomId, r.attending, r.computedAt],
+        );
+      },
+      async delete(roomId) {
+        await db.query('delete from results where room_id = $1', [roomId]);
+      },
+    },
+    audit: {
+      async append(e: AuditEvent) {
+        await db.query(
+          'insert into audit_events (room_id, member_id, actor, action, created_at) values ($1, $2::uuid, $3, $4, $5)',
+          [e.roomId, e.memberId, e.actor, e.action, e.createdAt],
+        );
+      },
+      async countAnswerSavesSinceLastClaim(roomId, memberId) {
+        const { rows } = await db.query<{ n: number }>(
+          `select count(*)::int as n from audit_events
+           where room_id = $1 and member_id = $2::uuid and action = 'answer_saved'
+             and id > coalesce((select max(id) from audit_events
+                                where room_id = $1 and member_id = $2::uuid and action = 'invite_claimed'), 0)`,
+          [roomId, memberId],
+        );
+        return rows[0]?.n ?? 0;
+      },
+    },
+  };
+}
+
+/** PostgreSQL adapter (also used with Supabase via its connection string). */
+export class PostgresUnitOfWork implements UnitOfWork {
+  constructor(private readonly pool: SqlPool) {}
+
+  async read<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    const conn = await this.pool.connect();
+    try {
+      return await fn(makeTx(conn));
+    } finally {
+      conn.release();
+    }
+  }
+
+  transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.inTransaction((conn) => fn(makeTx(conn)));
+  }
+
+  withRoomLock<T>(roomId: string, fn: (tx: Tx, room: Room) => Promise<T>): Promise<T> {
+    return this.inTransaction(async (conn) => {
+      const { rows } = await conn.query<RoomRow>('select * from rooms where id = $1 for update', [roomId]);
+      if (!rows[0]) throw notFound();
+      return fn(makeTx(conn), room(rows[0]));
+    });
+  }
+
+  private async inTransaction<T>(fn: (conn: SqlClient) => Promise<T>): Promise<T> {
+    const conn = await this.pool.connect();
+    try {
+      await conn.query('begin');
+      try {
+        const result = await fn(conn);
+        await conn.query('commit');
+        return result;
+      } catch (e) {
+        await conn.query('rollback');
+        throw e;
+      }
+    } finally {
+      conn.release();
+    }
+  }
+}
