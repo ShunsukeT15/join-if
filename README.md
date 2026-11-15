@@ -31,8 +31,9 @@ npm install
 # API（インメモリDB）
 cd apps/api
 cp .env.example .env
-npm run gen-key            # 出力を .env の TOKEN_ENC_KEY に設定
 npm run dev                # http://localhost:8787
+# インメモリDBでは TOKEN_ENC_KEY が空なら一時的な鍵を自動生成します。
+# Postgres を使うときは npm run gen-key の出力を .env の TOKEN_ENC_KEY に設定してください（必須）。
 
 # 画面（別ターミナル）
 cd apps/web

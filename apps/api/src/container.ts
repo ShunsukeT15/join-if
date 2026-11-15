@@ -1,7 +1,7 @@
 import type { Deps } from './application/deps.js';
 import type { UnitOfWork } from './application/ports/persistence.js';
 import type { RateLimiter } from './application/ports/services.js';
-import { NodeIdGenerator, NodeTokenService } from './infrastructure/crypto/nodeTokenService.js';
+import { generateEncryptionKey, NodeIdGenerator, NodeTokenService } from './infrastructure/crypto/nodeTokenService.js';
 import { MemoryUnitOfWork } from './infrastructure/persistence/memory/memoryUnitOfWork.js';
 import { MemoryRateLimiter, NoopRateLimiter } from './infrastructure/rateLimit/memoryRateLimiter.js';
 import { SystemClock } from './infrastructure/systemClock.js';
@@ -19,9 +19,15 @@ export interface Config {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dataStore = env.DATA_STORE === 'postgres' ? 'postgres' : 'memory';
-  const tokenEncKey = env.TOKEN_ENC_KEY;
+  let tokenEncKey = env.TOKEN_ENC_KEY?.trim();
   if (!tokenEncKey) {
-    throw new Error('TOKEN_ENC_KEY is required (32 random bytes, base64). Generate one with: npm run gen-key -w @himitsu/api');
+    if (dataStore === 'postgres') {
+      // Stored invite tokens are encrypted with this key; a random key would make them unreadable after a restart.
+      throw new Error('TOKEN_ENC_KEY is required with DATA_STORE=postgres. Generate one with: npm run gen-key -w @himitsu/api');
+    }
+    // In-memory data is lost on restart anyway, so an ephemeral key is fine for local development.
+    tokenEncKey = generateEncryptionKey();
+    console.warn('[config] TOKEN_ENC_KEY is not set; using a temporary key (memory store only).');
   }
   if (dataStore === 'postgres' && !env.DATABASE_URL) throw new Error('DATABASE_URL is required when DATA_STORE=postgres');
   return {
