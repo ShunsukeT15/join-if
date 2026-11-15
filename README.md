@@ -69,7 +69,15 @@ API は service_role 相当（テーブル所有者）の接続文字列で接�
 自動削除は API プロセス内のタイマーで行います。サーバーレスで常駐プロセスがない場合は
 `apps/api/src/infrastructure/persistence/postgres/supabase/purge_cron.sql` を Supabase で実行してください。
 
-## デプロイ
+## AWS へのデプロイ（Terraform）
+
+CloudFront + S3 + Lambda + RDS PostgreSQL 構成。手順は [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md)、費用は [docs/AWS_COST_ESTIMATE.md](docs/AWS_COST_ESTIMATE.md)（約 21 USD/月）。
+
+```bash
+infra/scripts/deploy.sh
+```
+
+## その他のホスティング
 
 | 層 | 例 | 設定 |
 | --- | --- | --- |

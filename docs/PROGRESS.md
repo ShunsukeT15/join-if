@@ -14,6 +14,7 @@
 | 4 | Postgres 実装 | ✅ | |
 | 5 | 画面 | ✅ | |
 | 6 | 仕上げ | ✅（一部保留） | |
+| 7 | AWS デプロイ（Terraform） | ✅ | |
 
 ## 詳細
 
@@ -73,7 +74,8 @@
 - ✅ デプロイ手順（README）
 - ⏸ Playwright によるブラウザ E2E（CI にブラウザ環境を用意してから）
 - ⏸ 実機確認（iPhone Safari / Android Chrome / LINE 内ブラウザ）
-- ⏸ 本番 Supabase・ホスティングへの実デプロイ、エラー監視の導入
+- ✅ AWS へ実デプロイ（CloudFront + S3 + Lambda + RDS、Terraform）
+- ⏸ エラー監視・CloudWatch アラーム、独自ドメイン、Terraform state の S3 化
 
 ## 作業ログ
 
@@ -86,3 +88,4 @@
 | 2026-11-15 | フェーズ4 完了。同じユースケーススイートが memory / postgres(PGlite) 両方で通過。DB 側でも100人上限・条件の同ルーム制約を二重化 |
 | 2026-11-15 | フェーズ5 完了。全画面実装、ApiClient をモックした画面テスト15件通過。ビルド時に CSP を付与 |
 | 2026-11-15 | フェーズ6。ブラウザ確認で bfcache 復元時に古い表示が残る不具合を発見し、pageshow / visibilitychange で再取得するよう修正 |
+| 2026-11-15 | フェーズ7。Terraform で AWS に構築・デプロイ（https://d19vqsq3pf9lsr.cloudfront.net）。回数制限を Postgres 共有化、Lambda URL は CloudFront OAC 経由のみ。月額試算 約21 USD |
