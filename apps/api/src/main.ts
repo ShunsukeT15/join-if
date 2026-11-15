@@ -1,6 +1,5 @@
 import { serve } from '@hono/node-server';
 import { getConnInfo } from '@hono/node-server/conninfo';
-import { purgeExpiredRooms } from './application/usecases/admin.js';
 import { buildContainer, loadConfig } from './container.js';
 import { createApp } from './presentation/http/app.js';
 
@@ -11,6 +10,7 @@ const app = createApp({
   deps: container.deps,
   rateLimiter: container.rateLimiter,
   corsOrigins: config.corsOrigins,
+  originVerify: config.originVerify,
   clientIp: (c) => {
     if (config.trustProxy) {
       const fwd = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
@@ -24,8 +24,8 @@ const app = createApp({
 
 const purge = async () => {
   try {
-    const n = await purgeExpiredRooms(container.deps);
-    if (n > 0) console.log(`[purge] removed ${n} expired room(s)`);
+    const n = await container.purge();
+    if (n.rooms > 0) console.log(`[purge] removed ${n.rooms} expired room(s)`);
   } catch (e) {
     console.error('[purge] failed', e instanceof Error ? e.message : e);
   }

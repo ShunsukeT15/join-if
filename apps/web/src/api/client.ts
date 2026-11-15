@@ -51,13 +51,17 @@ export class HttpApiClient implements ApiClient {
     if (tokens.invite) headers[HEADERS.invite] = tokens.invite;
     if (tokens.member) headers[HEADERS.member] = tokens.member;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    // CloudFront signs requests to the Lambda origin (OAC); for requests with a body
+    // the viewer must supply the payload hash.
+    if (method !== 'GET' && method !== 'HEAD') headers['x-amz-content-sha256'] = await sha256Hex(payload ?? '');
 
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: payload,
         referrerPolicy: 'no-referrer',
         credentials: 'omit',
         cache: 'no-store',
@@ -121,3 +125,8 @@ export class HttpApiClient implements ApiClient {
 }
 
 const enc = encodeURIComponent;
+
+export async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}

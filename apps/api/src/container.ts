@@ -1,8 +1,10 @@
 import type { Deps } from './application/deps.js';
 import type { UnitOfWork } from './application/ports/persistence.js';
 import type { RateLimiter } from './application/ports/services.js';
+import { purgeExpiredRooms } from './application/usecases/admin.js';
 import { generateEncryptionKey, NodeIdGenerator, NodeTokenService } from './infrastructure/crypto/nodeTokenService.js';
 import { MemoryUnitOfWork } from './infrastructure/persistence/memory/memoryUnitOfWork.js';
+import type { SqlPool } from './infrastructure/persistence/postgres/pgClient.js';
 import { MemoryRateLimiter, NoopRateLimiter } from './infrastructure/rateLimit/memoryRateLimiter.js';
 import { SystemClock } from './infrastructure/systemClock.js';
 
@@ -10,11 +12,14 @@ export interface Config {
   port: number;
   dataStore: 'memory' | 'postgres';
   databaseUrl: string | undefined;
+  dbSsl: 'off' | 'require' | 'verify' | undefined;
+  dbPoolMax: number;
   tokenEncKey: string;
   corsOrigins: string[];
   trustProxy: boolean;
-  rateLimit: boolean;
+  rateLimit: 'off' | 'memory' | 'postgres';
   purgeIntervalMs: number;
+  originVerify: { header: string; value: string } | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -30,50 +35,88 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     console.warn('[config] TOKEN_ENC_KEY is not set; using a temporary key (memory store only).');
   }
   if (dataStore === 'postgres' && !env.DATABASE_URL) throw new Error('DATABASE_URL is required when DATA_STORE=postgres');
+
+  const rl = env.RATE_LIMIT ?? 'memory';
+  const rateLimit = rl === 'off' ? 'off' : rl === 'postgres' ? 'postgres' : 'memory';
+  if (rateLimit === 'postgres' && dataStore !== 'postgres') throw new Error('RATE_LIMIT=postgres requires DATA_STORE=postgres');
+
+  const dbSsl = env.DB_SSL === 'off' || env.DB_SSL === 'require' || env.DB_SSL === 'verify' ? env.DB_SSL : undefined;
+
   return {
     port: Number(env.PORT ?? 8787),
     dataStore,
     databaseUrl: env.DATABASE_URL,
+    dbSsl,
+    dbPoolMax: Number(env.DB_POOL_MAX ?? 10),
     tokenEncKey,
     corsOrigins: (env.CORS_ORIGINS ?? 'http://localhost:5173')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
     trustProxy: env.TRUST_PROXY === 'true',
-    rateLimit: env.RATE_LIMIT !== 'off',
+    rateLimit,
     purgeIntervalMs: Number(env.PURGE_INTERVAL_MS ?? 6 * 60 * 60 * 1000),
+    originVerify: env.ORIGIN_VERIFY_SECRET
+      ? { header: env.ORIGIN_VERIFY_HEADER ?? 'X-Origin-Verify', value: env.ORIGIN_VERIFY_SECRET }
+      : undefined,
   };
 }
 
 export interface Container {
   deps: Deps;
   rateLimiter: RateLimiter;
+  /** Applies pending DB migrations (no-op for the memory store). */
+  migrate: () => Promise<string[]>;
+  /** Deletes expired rooms and stale rate-limit counters. */
+  purge: () => Promise<{ rooms: number; rateLimits: number }>;
   close: () => Promise<void>;
 }
 
 /** Composition root: the only place that picks concrete adapters. */
 export async function buildContainer(config: Config): Promise<Container> {
   let uow: UnitOfWork;
-  let close = async () => {};
+  let pool: SqlPool | undefined;
 
   if (config.dataStore === 'postgres') {
     const { PostgresUnitOfWork } = await import('./infrastructure/persistence/postgres/postgresUnitOfWork.js');
     const { createPgPool } = await import('./infrastructure/persistence/postgres/pgClient.js');
-    const pool = createPgPool(config.databaseUrl!);
+    pool = createPgPool(config.databaseUrl!, { ssl: config.dbSsl, max: config.dbPoolMax });
     uow = new PostgresUnitOfWork(pool);
-    close = () => pool.end();
   } else {
     uow = new MemoryUnitOfWork();
   }
 
+  let rateLimiter: RateLimiter;
+  let sweepRateLimits = async () => 0;
+  if (config.rateLimit === 'postgres') {
+    const { PostgresRateLimiter } = await import('./infrastructure/rateLimit/postgresRateLimiter.js');
+    const pg = new PostgresRateLimiter(pool!);
+    rateLimiter = pg;
+    sweepRateLimits = () => pg.sweep();
+  } else {
+    rateLimiter = config.rateLimit === 'memory' ? new MemoryRateLimiter() : new NoopRateLimiter();
+  }
+
+  const deps: Deps = {
+    uow,
+    tokens: new NodeTokenService(config.tokenEncKey),
+    ids: new NodeIdGenerator(),
+    clock: new SystemClock(),
+  };
+
   return {
-    deps: {
-      uow,
-      tokens: new NodeTokenService(config.tokenEncKey),
-      ids: new NodeIdGenerator(),
-      clock: new SystemClock(),
+    deps,
+    rateLimiter,
+    async migrate() {
+      if (!pool) return [];
+      const { migrate } = await import('./infrastructure/persistence/postgres/migrator.js');
+      return migrate(pool, console.log);
     },
-    rateLimiter: config.rateLimit ? new MemoryRateLimiter() : new NoopRateLimiter(),
-    close,
+    async purge() {
+      return { rooms: await purgeExpiredRooms(deps), rateLimits: await sweepRateLimits() };
+    },
+    close: async () => {
+      await pool?.end();
+    },
   };
 }

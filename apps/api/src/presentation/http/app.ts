@@ -20,6 +20,11 @@ export interface AppOptions {
   routes?: RouteDef[];
   /** Receives unexpected errors. Must not log tokens or answers. */
   onError?: (err: unknown, route: string) => void;
+  /**
+   * When set, every request must carry this header/value (added by the CDN in front of the API),
+   * so the function URL cannot be called directly. Mismatches get a plain 404.
+   */
+  originVerify?: { header: string; value: string };
 }
 
 const STATUS: Record<ErrorCode, ContentfulStatusCode> = {
@@ -72,6 +77,14 @@ async function readBody(c: Context, schema: z.ZodType | undefined): Promise<unkn
 export function createApp(opts: AppOptions) {
   const app = new Hono();
   const routeTable = opts.routes ?? defaultRoutes;
+
+  if (opts.originVerify) {
+    const { header, value } = opts.originVerify;
+    app.use('*', async (c, next) => {
+      if (c.req.header(header) !== value) return c.json(errorBody(notFound()), 404);
+      await next();
+    });
+  }
 
   app.use('*', async (c, next) => {
     await next();

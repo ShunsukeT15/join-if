@@ -16,12 +16,19 @@ export interface SqlPool {
   end(): Promise<void>;
 }
 
-/** node-postgres pool (production, Supabase). */
-export function createPgPool(connectionString: string): SqlPool {
+export interface PgPoolOptions {
+  /** off: plain TCP / require: TLS without CA verification / verify: TLS with system CAs. */
+  ssl?: 'off' | 'require' | 'verify';
+  max?: number;
+}
+
+/** node-postgres pool (production, Supabase, Amazon RDS). */
+export function createPgPool(connectionString: string, opts: PgPoolOptions = {}): SqlPool {
+  const ssl = opts.ssl ?? (/supabase\.(co|com)/.test(connectionString) ? 'require' : 'off');
   const pool = new pg.Pool({
     connectionString,
-    max: 10,
-    ssl: /sslmode=require|supabase\.(co|com)/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
+    max: opts.max ?? 10,
+    ssl: ssl === 'off' ? undefined : { rejectUnauthorized: ssl === 'verify' },
   });
   return {
     async connect() {

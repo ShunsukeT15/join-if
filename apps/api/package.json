@@ -9,12 +9,15 @@
     "migrate": "tsx --env-file-if-exists=.env src/infrastructure/persistence/postgres/migrate.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "gen-key": "tsx src/genKey.ts"
+    "gen-key": "tsx src/genKey.ts",
+    "build:lambda": "node scripts/build-lambda.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.16",
+    "@types/aws-lambda": "^8.10.164",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
