@@ -1,12 +1,19 @@
 {
   "name": "himitsu-shukketsu",
   "private": true,
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "dev:api": "npm run dev -w @himitsu/api",
     "dev:web": "npm run dev -w @himitsu/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "smoke": "node infra/scripts/smoke-test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

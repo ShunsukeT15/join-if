@@ -1,0 +1,94 @@
+# 04. AWS へのデプロイ
+
+## 構成
+
+```text
+ブラウザ ──HTTPS──▶ CloudFront（1つのドメイン）
+                     ├─ /*      → S3（SPA。非公開バケット、OAC）
+                     │            CloudFront Function で拡張子なしのパスを /index.html に
+                     └─ /api/*  → Lambda Function URL（AWS_IAM 認証、CloudFront OAC で署名）
+                                   + X-Origin-Verify ヘッダー（二重チェック）
+                                   │
+                         ┌──────── VPC（プライベートサブネットのみ、NAT なし）────────┐
+                         │  Lambda (Node.js, arm64) ──TLS(証明書検証)──▶ RDS PostgreSQL │
+                         └────────────────────────────────────────────────────────────┘
+EventBridge（毎日 03:17 JST）→ Lambda { action: "purge" }（期限切れルームと回数制限の掃除）
+```
+
+| リソース | 名前 |
+| --- | --- |
+| CloudFront | コメント `himitsu-prod web + api` |
+| S3 | `himitsu-prod-web-<アカウントID>` |
+| Lambda | `himitsu-prod-api` |
+| RDS | `himitsu-prod-db`（PostgreSQL 17, db.t4g.micro） |
+| ロググループ | `/aws/lambda/himitsu-prod-api`（14日保持） |
+
+## 初回デプロイ
+
+前提: [03-aws-prerequisites.md](./03-aws-prerequisites.md) が完了していること。所要時間は 20〜35 分（RDS の作成が大半）。
+
+```bash
+npm ci
+infra/scripts/deploy.sh      # plan が表示されるので内容を確認して yes
+```
+
+スクリプトが行うこと:
+
+1. API を Lambda 用にバンドル（`apps/api/dist/lambda`）
+2. `terraform apply`
+3. DB マイグレーション（Lambda を `{"action":"migrate"}` で起動）
+4. 画面をビルドして S3 にアップロード（`assets/` は長期キャッシュ、`index.html` はキャッシュなし）
+5. CloudFront のキャッシュ削除
+
+最後に `==> Done: https://xxxx.cloudfront.net` と表示されたら完了です。続けて [05-verification.md](./05-verification.md) で動作確認します。
+
+> **初回の `plan` で必ず確認すること**: `Plan: N to add, 0 to change, 0 to destroy.`（既存リソースへの変更・削除が 0 件）
+
+### 初回デプロイで途中失敗した場合
+
+途中で失敗しても、作成済みのリソースは state に記録されています。原因を直して **同じコマンドを再実行** すれば続きから作成されます（作り直しにはなりません）。
+
+## 更新デプロイ
+
+コードやインフラ定義を変更したら、同じコマンドを実行します。
+
+```bash
+git pull
+npm ci
+npm test                      # 先にテストを通す
+infra/scripts/deploy.sh
+```
+
+- Lambda は zip の内容が変わったときだけ更新されます。
+- マイグレーションは未適用のものだけ実行されます（適用済みはスキップ）。
+- 画面の変更は CloudFront のキャッシュ削除後、数分以内に反映されます。
+
+インフラを変えずに確認だけしたい場合:
+
+```bash
+cd infra/terraform && terraform plan
+```
+
+## ロールバック
+
+アプリの不具合で前のバージョンに戻す場合:
+
+```bash
+git checkout <前のコミット>
+infra/scripts/deploy.sh
+git checkout main
+```
+
+> **注意**: DB マイグレーションは前進のみです。新しいマイグレーションで追加したテーブルや列は、コードを戻しても残ります
+> （現在のマイグレーションは追加のみなので、古いコードでも動作します）。列の削除・変更を含むマイグレーションを追加するときは、戻せる手順を先に用意してください。
+
+## デプロイに関するエラー
+
+| 症状 | 原因と対処 |
+| --- | --- |
+| `ExpiredToken` / `InvalidClientTokenId` | AWS 認証情報の期限切れ・誤り。`aws sts get-caller-identity` で確認 |
+| `Error acquiring the state lock` | 別の terraform が実行中、または異常終了。実行中でないことを確認して `terraform force-unlock <ID>` |
+| マイグレーションで `migration failed` | 表示された `errorMessage` を確認。ログは [06-operations.md](./06-operations.md#ログを見る) |
+| 画面が古いまま | CloudFront の反映待ち（数分）。ブラウザのキャッシュも削除 |
+| API が `403` を返す | CloudFront と Lambda の権限設定が未反映。数分待って再試行、続く場合は `terraform apply` を再実行 |
+| `InvalidArgument: ... x-amz-content-sha256 that is not allowed` | オリジンリクエストポリシーにこのヘッダーを入れてはいけない（CloudFront が自動処理）。現行の定義では解消済み |
