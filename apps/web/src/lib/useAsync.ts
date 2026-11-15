@@ -25,5 +25,18 @@ export function useLoad<T>(key: string, load: () => Promise<T>) {
     void reload();
   }, [reload]);
 
+  // Refresh when the page is restored from the back/forward cache or the tab becomes visible again,
+  // so statuses (answered, closed, result) are never stale.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => e.persisted && void reload();
+    const onVisible = () => document.visibilityState === 'visible' && void reload();
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [reload]);
+
   return { data, setData, error, loading, reload };
 }
