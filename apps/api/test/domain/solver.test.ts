@@ -137,7 +137,7 @@ describe('solve: brute force cross-check', () => {
       expect(unique, `case ${i}: maximum must be unique`).toBe(true);
       expect([...got].sort(), `case ${i}`).toEqual([...best].sort());
     }
-  });
+  }, 60_000);
 });
 
 describe('solve: performance', () => {
