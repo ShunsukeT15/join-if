@@ -11,7 +11,10 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "smoke": "node infra/scripts/smoke-test.mjs"
+    "smoke": "node infra/scripts/smoke-test.mjs",
+    "doctor": "infra/scripts/doctor.sh",
+    "release": "infra/scripts/release.sh",
+    "setup:aws": "infra/scripts/setup-aws.sh"
   },
   "engines": {
     "node": ">=22"

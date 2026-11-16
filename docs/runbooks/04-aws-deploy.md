@@ -23,16 +23,28 @@ EventBridge（毎日 03:17 JST）→ Lambda { action: "purge" }（期限切れ�
 | RDS | `himitsu-prod-db`（PostgreSQL 17, db.t4g.micro） |
 | ロググループ | `/aws/lambda/himitsu-prod-api`（14日保持） |
 
+## コマンドの早見表
+
+| コマンド | 内容 | AWS を変更するか |
+| --- | --- | --- |
+| `npm run doctor` | ツール・AWS 認証・デプロイ先アカウントの点検 | しない |
+| `npm run release -- --plan` | 点検 → 型チェック → テスト → 変更内容の確認 | しない |
+| `npm run release` | 点検 → 型チェック → テスト → デプロイ（plan を見て yes）→ スモークテスト | する |
+| `npm run release -- --yes` | 上と同じで、確認なしで適用 | する |
+| `infra/scripts/deploy.sh` | デプロイ部分のみ（テスト・スモークテストなし） | する |
+
+通常は **`npm run release` の1コマンド** で足ります。
+
 ## 初回デプロイ
 
 前提: [03-aws-prerequisites.md](./03-aws-prerequisites.md) が完了していること。所要時間は 20〜35 分（RDS の作成が大半）。
 
 ```bash
 npm ci
-infra/scripts/deploy.sh      # plan が表示されるので内容を確認して yes
+npm run release      # plan が表示されるので内容を確認して yes
 ```
 
-スクリプトが行うこと:
+`npm run release` は、点検・型チェック・テストを通してから `deploy.sh` を実行し、最後にスモークテストで確認します。`deploy.sh` が行うこと:
 
 1. API を Lambda 用にバンドル（`apps/api/dist/lambda`）
 2. `terraform apply`
@@ -60,18 +72,17 @@ infra/scripts/deploy.sh      # plan が表示されるので内容を確認し�
 ```bash
 git pull
 npm ci
-npm test                      # 先にテストを通す
-infra/scripts/deploy.sh
+npm run release
 ```
 
 - Lambda は zip の内容が変わったときだけ更新されます。
 - マイグレーションは未適用のものだけ実行されます（適用済みはスキップ）。
 - 画面の変更は CloudFront のキャッシュ削除後、数分以内に反映されます。
 
-インフラを変えずに確認だけしたい場合:
+変更内容の確認だけしたい場合（AWS は変更しない）:
 
 ```bash
-cd infra/terraform && terraform plan
+npm run release -- --plan
 ```
 
 ## ロールバック
@@ -80,7 +91,7 @@ cd infra/terraform && terraform plan
 
 ```bash
 git checkout <前のコミット>
-infra/scripts/deploy.sh
+npm run release
 git checkout main
 ```
 

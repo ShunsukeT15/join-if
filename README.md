@@ -16,6 +16,13 @@ npm run dev:api     # ターミナル1: API  http://localhost:8787
 npm run dev:web     # ターミナル2: 画面 http://localhost:5173
 ```
 
+## デプロイ（AWS）
+
+```bash
+npm run doctor     # 点検
+npm run release    # テスト → デプロイ → 動作確認
+```
+
 ## ドキュメント
 
 すべての手順書は [docs/README.md](docs/README.md) から辿れます。

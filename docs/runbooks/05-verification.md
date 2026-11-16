@@ -4,6 +4,8 @@
 
 ## 1. 自動スモークテスト（約10秒）
 
+`npm run release` は最後にこれを自動で実行します。単独で実行する場合:
+
 ```bash
 # AWS
 npm run smoke -- "$(terraform -chdir=infra/terraform output -raw site_url)"

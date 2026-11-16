@@ -11,6 +11,17 @@
 - [ ] （推奨）コスト配分タグ `Project` を有効化した
 - [ ] （チーム運用時）Terraform state の保存先を決めた
 
+## まとめて実行する場合
+
+```bash
+npm run doctor                                        # 足りないものと直し方が表示される
+npm run setup:aws -- --budget-email you@example.com   # コスト配分タグの有効化 + 予算アラートの通知先（初回のみ）
+```
+
+`setup:aws` は AWS アカウントの設定（コスト配分タグ）を変更します。メールアドレスは `terraform.tfvars`（Git 管理外）に書き込まれ、次の `npm run release` で予算アラートが作成されます。**AWS から届く購読確認メールの承認だけは手作業**です。
+
+以下は個別に行う場合の手順です。
+
 ## 1. ツールのインストール
 
 ```bash

@@ -24,10 +24,9 @@ AI エージェントや開発者が守るルールは [AGENTS.md](../AGENTS.md)
 npm install && cp apps/api/.env.example apps/api/.env
 npm run dev:api & npm run dev:web
 
-# AWS（事前準備 03 が済んでいること）
-npm ci && npm test
-infra/scripts/deploy.sh
-npm run smoke -- "$(terraform -chdir=infra/terraform output -raw site_url)"
+# AWS
+npm run doctor          # 点検（足りないものと直し方を表示）
+npm run release         # テスト → デプロイ → スモークテスト
 ```
 
 ## 設計・計画
