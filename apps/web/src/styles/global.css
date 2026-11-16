@@ -427,6 +427,81 @@ textarea {
   font-size: 14px;
 }
 
+.cond-lead {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+.pattern {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px 14px;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pattern__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+}
+
+.pattern__title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.pattern__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pattern__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.pattern__summary {
+  font-size: 13px;
+  color: var(--primary-hover);
+  font-weight: 600;
+}
+
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 700;
+  margin: 2px 0 12px;
+}
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.add-pattern {
+  align-self: flex-start;
+}
+
+.summary__list {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  font-weight: 500;
+}
+
 /* ---------- Notices ---------- */
 
 .notice {

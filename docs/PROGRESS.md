@@ -15,6 +15,7 @@
 | 5 | 画面 | ✅ | |
 | 6 | 仕上げ | ✅（一部保留） | |
 | 7 | AWS デプロイ（Terraform） | ✅ | |
+| 8 | 条件付き回答の OR 対応 | ✅ | |
 
 ## 詳細
 
@@ -90,3 +91,4 @@
 | 2026-11-15 | フェーズ6。ブラウザ確認で bfcache 復元時に古い表示が残る不具合を発見し、pageshow / visibilitychange で再取得するよう修正 |
 | 2026-11-15 | フェーズ7。Terraform で AWS に構築・デプロイ（https://d19vqsq3pf9lsr.cloudfront.net）。回数制限を Postgres 共有化、Lambda URL は CloudFront OAC 経由のみ。月額試算 約21 USD |
 | 2026-11-15 | 手順書を docs/runbooks に整理（ローカル・テスト・AWS準備・デプロイ・動作確認・運用・他ホスティング・設定一覧）。スモークテストを infra/scripts/smoke-test.mjs として追加し、手順どおりに AWS で全項目通過を確認 |
+| 2026-11-16 | フェーズ8。条件付き回答を「パターンの OR」に拡張（例: A・Bが来るなら、またはB・Cが来るなら）。集計・検証・DB（マイグレーション003）・API・画面・テストを更新 |

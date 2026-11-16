@@ -1,16 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { describeCondition, inviteMessage } from '../src/lib/format';
+import { describeCondition, describePattern, inviteMessage } from '../src/lib/format';
+
+describe('describePattern', () => {
+  it.each([
+    [{ people: ['A'], need: 1, minTotal: 0 }, 'Aさんが来るなら'],
+    [{ people: ['A', 'B'], need: 2, minTotal: 0 }, 'A・Bさんが全員来るなら'],
+    [{ people: ['A', 'B'], need: 1, minTotal: 0 }, 'A・Bさんのうち誰か1人でも来るなら'],
+    [{ people: ['A', 'B', 'C'], need: 2, minTotal: 0 }, 'A・B・Cさんのうち2人以上が来るなら'],
+    [{ people: [], need: 0, minTotal: 3 }, '自分以外の参加者が3人以上なら'],
+    [{ people: ['A'], need: 1, minTotal: 3 }, 'Aさんが来る、かつ自分以外の参加者が3人以上なら'],
+  ])('%j', (input, expected) => {
+    expect(describePattern(input)).toBe(expected);
+  });
+});
 
 describe('describeCondition', () => {
-  it.each([
-    [{ people: ['A'], need: 1, minTotal: 0 }, 'Aさんが来るなら行く'],
-    [{ people: ['A', 'B'], need: 2, minTotal: 0 }, 'A・Bさんが全員来るなら行く'],
-    [{ people: ['A', 'B'], need: 1, minTotal: 0 }, 'A・Bさんのうち誰か1人でも来るなら行く'],
-    [{ people: ['A', 'B', 'C'], need: 2, minTotal: 0 }, 'A・B・Cさんのうち2人以上が来るなら行く'],
-    [{ people: [], need: 0, minTotal: 3 }, '自分以外の参加者が3人以上なら行く'],
-    [{ people: ['A'], need: 1, minTotal: 3 }, 'Aさんが来るなら、かつ自分以外の参加者が3人以上なら行く'],
-  ])('%j', (input, expected) => {
-    expect(describeCondition(input)).toBe(expected);
+  it('single pattern', () => {
+    expect(describeCondition([{ people: ['A'], need: 1, minTotal: 0 }])).toBe('Aさんが来るなら行く');
+  });
+  it('joins patterns with または', () => {
+    expect(
+      describeCondition([
+        { people: ['A', 'B'], need: 2, minTotal: 0 },
+        { people: ['B', 'C'], need: 2, minTotal: 0 },
+      ]),
+    ).toBe('A・Bさんが全員来るなら、またはB・Cさんが全員来るなら行く');
+  });
+  it('skips empty patterns', () => {
+    expect(describeCondition([{ people: [], need: 0, minTotal: 0 }])).toBe('');
   });
 });
 

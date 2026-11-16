@@ -23,20 +23,29 @@ export function inviteMessage(opts: { name: string; title: string; deadlineText:
   ].join('\n');
 }
 
-/** Human-readable summary of a conditional answer. */
-export function describeCondition(opts: {
+export interface PatternText {
+  /** Display names of the chosen people. */
   people: string[];
   need: number;
   minTotal: number;
-}): string {
+}
+
+/** One pattern as a clause ending in 「なら」, e.g. 「A・Bさんが全員来るなら」. */
+export function describePattern(p: PatternText): string {
   const parts: string[] = [];
-  if (opts.people.length > 0 && opts.need > 0) {
-    const names = opts.people.join('・');
-    if (opts.people.length === 1) parts.push(`${names}さんが来るなら`);
-    else if (opts.need === opts.people.length) parts.push(`${names}さんが全員来るなら`);
-    else if (opts.need === 1) parts.push(`${names}さんのうち誰か1人でも来るなら`);
-    else parts.push(`${names}さんのうち${opts.need}人以上が来るなら`);
+  if (p.people.length > 0 && p.need > 0) {
+    const names = p.people.join('・');
+    if (p.people.length === 1) parts.push(`${names}さんが来る`);
+    else if (p.need === p.people.length) parts.push(`${names}さんが全員来る`);
+    else if (p.need === 1) parts.push(`${names}さんのうち誰か1人でも来る`);
+    else parts.push(`${names}さんのうち${p.need}人以上が来る`);
   }
-  if (opts.minTotal > 0) parts.push(`自分以外の参加者が${opts.minTotal}人以上なら`);
-  return parts.length ? `${parts.join('、かつ')}行く` : '';
+  if (p.minTotal > 0) parts.push(`自分以外の参加者が${p.minTotal}人以上`);
+  return parts.length ? `${parts.join('、かつ')}なら` : '';
+}
+
+/** Whole conditional answer: patterns joined with 「または」. */
+export function describeCondition(patterns: PatternText[]): string {
+  const clauses = patterns.map(describePattern).filter(Boolean);
+  return clauses.length ? `${clauses.join('、または')}行く` : '';
 }

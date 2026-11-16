@@ -1,11 +1,12 @@
 import type { AnswerDto, Choice, MemberSummary, MemberViewResponse, SaveAnswerRequest } from '@himitsu/contracts';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { LIMITS } from '@himitsu/contracts';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useLocation, useParams } from 'react-router';
 import { useApi } from '../api/ApiProvider';
 import { ApiError } from '../api/client';
 import { AnswerProgress, ErrorView, EventHeader, MemberStatusList, ResultCard } from '../components/room';
 import { Notice, Spinner, UrlBox, useToast } from '../components/ui';
-import { describeCondition, formatDateTime, urls } from '../lib/format';
+import { describeCondition, describePattern, formatDateTime, urls } from '../lib/format';
 import { tokenFromHash, tokenStore } from '../lib/tokenStore';
 import { useLoad } from '../lib/useAsync';
 
@@ -134,14 +135,32 @@ function SavedAnswerSummary({ answer, members }: { answer: AnswerDto | null; mem
   return (
     <div className="summary" style={{ marginBottom: 12 }}>
       {answer.choice === 'cond'
-        ? describeCondition({
-            people: answer.condPeople.map((id) => names.get(id) ?? '（外れた人）'),
-            need: answer.condNeed,
-            minTotal: answer.condMinTotal,
-          })
+        ? describeCondition(
+            answer.patterns.map((p) => ({
+              people: p.people.map((id) => names.get(id) ?? '（外れた人）'),
+              need: p.need,
+              minTotal: p.minTotal,
+            })),
+          )
         : label}
     </div>
   );
+}
+
+/** Editable state of one pattern. The person part is active when people are selected. */
+interface DraftPattern {
+  key: number;
+  people: string[];
+  need: number;
+  useTotal: boolean;
+  minTotal: number;
+}
+
+function patternOk(p: DraftPattern, othersCount: number): boolean {
+  const personOk = p.people.length === 0 || (p.need >= 1 && p.need <= p.people.length);
+  const totalOk = !p.useTotal || (p.minTotal >= 1 && p.minTotal <= othersCount);
+  const hasSomething = p.people.length > 0 || p.useTotal;
+  return personOk && totalOk && hasSomething;
 }
 
 function AnswerForm({
@@ -159,53 +178,59 @@ function AnswerForm({
   const others = useMemo(() => members.filter((m) => m.id !== me), [members, me]);
   const otherIds = useMemo(() => new Set(others.map((m) => m.id)), [others]);
   const names = useMemo(() => nameMap(members), [members]);
+  const nextKey = useRef(0);
 
-  // Drop people who are no longer members when loading a saved answer.
-  const initialPeople = (answer?.condPeople ?? []).filter((id) => otherIds.has(id));
+  const newPattern = (): DraftPattern => ({ key: nextKey.current++, people: [], need: 1, useTotal: false, minTotal: 1 });
+
+  // Load the saved answer, dropping people who are no longer members (spec §5.5).
+  const [patterns, setPatterns] = useState<DraftPattern[]>(() => {
+    const loaded = (answer?.patterns ?? [])
+      .map((p) => {
+        const people = p.people.filter((id) => otherIds.has(id));
+        return {
+          key: nextKey.current++,
+          people,
+          need: Math.min(Math.max(p.need, 1), Math.max(people.length, 1)),
+          useTotal: p.minTotal > 0,
+          minTotal: p.minTotal || 1,
+        };
+      })
+      .filter((p) => p.people.length > 0 || p.useTotal);
+    return loaded.length ? loaded : [newPattern()];
+  });
   const [choice, setChoice] = useState<Choice | null>(answer?.choice ?? null);
-  const [usePeople, setUsePeople] = useState(answer ? answer.condNeed > 0 && initialPeople.length > 0 : true);
-  const [people, setPeople] = useState<string[]>(initialPeople);
-  const [need, setNeed] = useState(Math.min(Math.max(answer?.condNeed ?? 1, 1), Math.max(initialPeople.length, 1)));
-  const [useTotal, setUseTotal] = useState(answer ? answer.condMinTotal > 0 : false);
-  const [minTotal, setMinTotal] = useState(answer?.condMinTotal || 1);
   const [busy, setBusy] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const togglePerson = (id: string) => {
-    const prev = people;
-    const next = prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id];
-    setPeople(next);
-    // Keep "all of them" sticky; otherwise clamp into range.
-    const upper = Math.max(next.length, 1);
-    setNeed(need === prev.length || prev.length === 0 ? upper : Math.min(Math.max(need, 1), upper));
-  };
+  const update = (key: number, fn: (p: DraftPattern) => DraftPattern) =>
+    setPatterns((list) => list.map((p) => (p.key === key ? fn(p) : p)));
 
-  const peopleOk = !usePeople || (people.length > 0 && need >= 1 && need <= people.length);
-  const totalOk = !useTotal || (minTotal >= 1 && minTotal <= others.length);
-  const condOk = choice !== 'cond' || ((usePeople || useTotal) && peopleOk && totalOk);
+  const togglePerson = (key: number, id: string) =>
+    update(key, (p) => {
+      const next = p.people.includes(id) ? p.people.filter((x) => x !== id) : [...p.people, id];
+      const upper = Math.max(next.length, 1);
+      // Keep "all of them" sticky; otherwise clamp into range.
+      const need = p.need === p.people.length || p.people.length === 0 ? upper : Math.min(Math.max(p.need, 1), upper);
+      return { ...p, people: next, need };
+    });
+
+  const condOk = choice !== 'cond' || (patterns.length > 0 && patterns.every((p) => patternOk(p, others.length)));
   const valid = choice !== null && condOk;
 
-  const summary =
-    choice === 'cond' && condOk
-      ? describeCondition({
-          people: usePeople ? people.map((id) => names.get(id) ?? '') : [],
-          need: usePeople ? need : 0,
-          minTotal: useTotal ? minTotal : 0,
-        })
-      : '';
+  const toRequestPattern = (p: DraftPattern) => ({
+    people: p.people,
+    need: p.people.length > 0 ? p.need : 0,
+    minTotal: p.useTotal ? p.minTotal : 0,
+  });
+  const describe = (p: DraftPattern) => {
+    const r = toRequestPattern(p);
+    return describePattern({ people: r.people.map((id) => names.get(id) ?? ''), need: r.need, minTotal: r.minTotal });
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!valid || !choice) return;
-    const req: SaveAnswerRequest =
-      choice === 'cond'
-        ? {
-            choice,
-            condPeople: usePeople ? people : [],
-            condNeed: usePeople ? need : 0,
-            condMinTotal: useTotal ? minTotal : 0,
-          }
-        : { choice };
+    const req: SaveAnswerRequest = choice === 'cond' ? { choice, patterns: patterns.map(toRequestPattern) } : { choice };
     setBusy(true);
     setFieldErrors({});
     try {
@@ -220,6 +245,12 @@ function AnswerForm({
       setBusy(false);
     }
   };
+
+  const patternError = (i: number) =>
+    fieldErrors[`patterns.${i}.people`] ??
+    fieldErrors[`patterns.${i}.need`] ??
+    fieldErrors[`patterns.${i}.minTotal`] ??
+    fieldErrors[`patterns.${i}`];
 
   return (
     <form onSubmit={submit}>
@@ -243,77 +274,139 @@ function AnswerForm({
 
       {choice === 'cond' && (
         <div className="cond-box">
-          <div>
-            <label className="cond-section__head">
-              <input type="checkbox" className="checkbox" checked={usePeople} onChange={(e) => setUsePeople(e.target.checked)} />
-              特定の人が来るなら
-            </label>
-            {usePeople && (
-              <div className="cond-section__body">
-                <div className="chips" role="group" aria-label="条件にする人">
-                  {others.map((m) => (
+          <p className="cond-lead">
+            次の条件の<strong>どれか1つでも</strong>満たせば参加になります。
+          </p>
+
+          {patterns.map((p, i) => (
+            <div key={p.key}>
+              {i > 0 && (
+                <div className="or-divider" aria-hidden>
+                  または
+                </div>
+              )}
+              <fieldset className="pattern" aria-label={`条件${i + 1}`}>
+                <div className="pattern__head">
+                  <span className="pattern__title">条件 {i + 1}</span>
+                  {patterns.length > 1 && (
                     <button
-                      key={m.id}
                       type="button"
-                      className="chip"
-                      aria-pressed={people.includes(m.id)}
-                      onClick={() => togglePerson(m.id)}
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => setPatterns((list) => list.filter((x) => x.key !== p.key))}
+                      aria-label={`条件${i + 1}を削除`}
                     >
-                      {m.name}
+                      削除
                     </button>
-                  ))}
+                  )}
                 </div>
-                {people.length > 1 && (
-                  <div className="sentence">
-                    選んだ {people.length} 人のうち
-                    <select className="select" value={need} onChange={(e) => setNeed(Number(e.target.value))} aria-label="必要な人数">
-                      {Array.from({ length: people.length }, (_, i) => i + 1).map((n) => (
-                        <option key={n} value={n}>
-                          {n === people.length ? `${n}人（全員）` : `${n}人`}
-                        </option>
-                      ))}
-                    </select>
-                    以上が来るなら
-                  </div>
-                )}
-                {people.length === 0 && <span className="field__hint">条件にする人を選んでください</span>}
-                {(fieldErrors.condPeople || fieldErrors.condNeed) && (
-                  <span className="field__error">{fieldErrors.condPeople ?? fieldErrors.condNeed}</span>
-                )}
-              </div>
-            )}
-          </div>
 
-          <div>
-            <label className="cond-section__head">
-              <input type="checkbox" className="checkbox" checked={useTotal} onChange={(e) => setUseTotal(e.target.checked)} />
-              参加者が一定数以上なら
-            </label>
-            {useTotal && (
-              <div className="cond-section__body">
-                <div className="sentence">
-                  自分以外の参加者が全体で
-                  <select className="select" value={minTotal} onChange={(e) => setMinTotal(Number(e.target.value))} aria-label="必要な参加人数">
-                    {Array.from({ length: others.length }, (_, i) => i + 1).map((n) => (
-                      <option key={n} value={n}>
-                        {n}人
-                      </option>
+                <div className="pattern__section">
+                  <span className="pattern__label">この人たちが来るなら</span>
+                  <div className="chips" role="group" aria-label={`条件${i + 1}の人`}>
+                    {others.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className="chip"
+                        aria-pressed={p.people.includes(m.id)}
+                        onClick={() => togglePerson(p.key, m.id)}
+                      >
+                        {m.name}
+                      </button>
                     ))}
-                  </select>
-                  以上なら
+                  </div>
+                  {p.people.length > 1 && (
+                    <div className="sentence">
+                      選んだ {p.people.length} 人のうち
+                      <select
+                        className="select"
+                        value={p.need}
+                        onChange={(e) => update(p.key, (x) => ({ ...x, need: Number(e.target.value) }))}
+                        aria-label={`条件${i + 1}の必要な人数`}
+                      >
+                        {Array.from({ length: p.people.length }, (_, k) => k + 1).map((n) => (
+                          <option key={n} value={n}>
+                            {n === p.people.length ? `${n}人（全員）` : `${n}人`}
+                          </option>
+                        ))}
+                      </select>
+                      以上が来るなら
+                    </div>
+                  )}
                 </div>
-                {fieldErrors.condMinTotal && <span className="field__error">{fieldErrors.condMinTotal}</span>}
-              </div>
-            )}
-          </div>
 
-          {!usePeople && !useTotal && <span className="field__error">どちらか一方の条件は必要です</span>}
-          {usePeople && useTotal && <span className="field__hint">両方の条件を満たしたときだけ参加になります。</span>}
-          {summary && <div className="summary">{summary}</div>}
+                <div className="pattern__section">
+                  <label className="cond-section__head">
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={p.useTotal}
+                      onChange={(e) => update(p.key, (x) => ({ ...x, useTotal: e.target.checked }))}
+                    />
+                    {p.people.length > 0 ? 'さらに、参加者が一定数以上なら' : '参加者が一定数以上なら'}
+                  </label>
+                  {p.useTotal && (
+                    <div className="sentence">
+                      自分以外の参加者が全体で
+                      <select
+                        className="select"
+                        value={p.minTotal}
+                        onChange={(e) => update(p.key, (x) => ({ ...x, minTotal: Number(e.target.value) }))}
+                        aria-label={`条件${i + 1}の必要な参加人数`}
+                      >
+                        {Array.from({ length: others.length }, (_, k) => k + 1).map((n) => (
+                          <option key={n} value={n}>
+                            {n}人
+                          </option>
+                        ))}
+                      </select>
+                      以上なら
+                    </div>
+                  )}
+                </div>
+
+                {patternOk(p, others.length) ? (
+                  <div className="pattern__summary">{describe(p)}</div>
+                ) : (
+                  <span className="field__hint">人を選ぶか、参加人数の条件をつけてください</span>
+                )}
+                {patternError(i) && <span className="field__error">{patternError(i)}</span>}
+              </fieldset>
+            </div>
+          ))}
+
+          {patterns.length < LIMITS.maxPatterns ? (
+            <button type="button" className="btn btn--secondary btn--sm add-pattern" onClick={() => setPatterns((l) => [...l, newPattern()])}>
+              ＋ 別の条件を追加（または）
+            </button>
+          ) : (
+            <span className="field__hint">条件は{LIMITS.maxPatterns}個までです</span>
+          )}
+
+          {condOk && (
+            <div className="summary">
+              {patterns.length === 1 ? (
+                `${describe(patterns[0]!)}行く`
+              ) : (
+                <>
+                  次のどれかを満たせば行く
+                  <ul className="summary__list">
+                    {patterns.map((p) => (
+                      <li key={p.key}>{describe(p)}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {fieldErrors.choice && <div className="field__error" style={{ marginTop: 8 }}>{fieldErrors.choice}</div>}
+      {(fieldErrors.patterns || fieldErrors.choice) && (
+        <div className="field__error" style={{ marginTop: 8 }}>
+          {fieldErrors.patterns ?? fieldErrors.choice}
+        </div>
+      )}
 
       <button type="submit" className="btn btn--primary btn--block" style={{ marginTop: 16 }} disabled={!valid || busy}>
         {busy ? '保存中…' : answer ? '回答を更新する' : '回答を保存する'}

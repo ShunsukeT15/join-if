@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
@@ -48,7 +48,7 @@ describe('InvitePage', () => {
 });
 
 describe('MemberPage answer form', () => {
-  it('sends a person condition', async () => {
+  it('sends a single person pattern', async () => {
     const user = userEvent.setup();
     const saveAnswer = vi.fn().mockResolvedValue(memberView());
     const api = fakeApi({ getMemberView: vi.fn().mockResolvedValue(memberView()), saveAnswer });
@@ -57,17 +57,79 @@ describe('MemberPage answer form', () => {
     await user.click(await screen.findByRole('button', { name: /条件付きで行く/ }));
     const save = screen.getByRole('button', { name: '回答を保存する' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
-    await user.click(screen.getByRole('button', { name: '鈴木' }));
-    expect(screen.getByText('鈴木さんが来るなら行く')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: '高橋' }));
-    expect(screen.getByText('鈴木・高橋さんが全員来るなら行く')).toBeTruthy();
+    const people = within(screen.getByRole('group', { name: '条件1の人' }));
+    await user.click(people.getByRole('button', { name: '鈴木' }));
+    expect(screen.getAllByText('鈴木さんが来るなら行く').length).toBeGreaterThan(0);
+    await user.click(people.getByRole('button', { name: '高橋' }));
+    expect(screen.getAllByText('鈴木・高橋さんが全員来るなら行く').length).toBeGreaterThan(0);
     await user.click(save);
 
     expect(saveAnswer).toHaveBeenCalledWith('room5', 'MT', {
       choice: 'cond',
-      condPeople: ['a', 'b'],
-      condNeed: 2,
-      condMinTotal: 0,
+      patterns: [{ people: ['a', 'b'], need: 2, minTotal: 0 }],
+    });
+  });
+
+  it('sends OR patterns: "鈴木 comes, or 2 others come"', async () => {
+    const user = userEvent.setup();
+    const saveAnswer = vi.fn().mockResolvedValue(memberView());
+    const api = fakeApi({ getMemberView: vi.fn().mockResolvedValue(memberView()), saveAnswer });
+    renderAt('/r/room8/m#MT', api);
+
+    await user.click(await screen.findByRole('button', { name: /条件付きで行く/ }));
+    await user.click(within(screen.getByRole('group', { name: '条件1の人' })).getByRole('button', { name: '鈴木' }));
+    await user.click(screen.getByRole('button', { name: /別の条件を追加/ }));
+    expect(screen.getByText('または')).toBeTruthy();
+
+    const second = screen.getByRole('group', { name: '条件2' });
+    // A new pattern with nothing selected blocks saving.
+    expect((screen.getByRole('button', { name: '回答を保存する' }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(within(second).getByRole('checkbox'));
+    await user.selectOptions(within(second).getByRole('combobox', { name: '条件2の必要な参加人数' }), '2');
+
+    expect(screen.getByText('次のどれかを満たせば行く')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '回答を保存する' }));
+    expect(saveAnswer).toHaveBeenCalledWith('room8', 'MT', {
+      choice: 'cond',
+      patterns: [
+        { people: ['a'], need: 1, minTotal: 0 },
+        { people: [], need: 0, minTotal: 2 },
+      ],
+    });
+  });
+
+  it('loads saved OR patterns and can delete one', async () => {
+    const user = userEvent.setup();
+    const saveAnswer = vi.fn().mockResolvedValue(memberView());
+    const api = fakeApi({
+      getMemberView: vi.fn().mockResolvedValue(
+        memberView({
+          me: {
+            id: 'me',
+            answer: {
+              choice: 'cond',
+              patterns: [
+                { people: ['a', 'b'], need: 2, minTotal: 0 },
+                { people: ['b'], need: 1, minTotal: 0 },
+              ],
+              updatedAt: '2026-11-20T12:03:00Z',
+            },
+            saveCount: 1,
+            claimedAt: '2026-11-18T10:40:00Z',
+            conditionNotice: false,
+          },
+        }),
+      ),
+      saveAnswer,
+    });
+    renderAt('/r/room9/m#MT', api);
+    expect(await screen.findByRole('group', { name: '条件2' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '条件1を削除' }));
+    expect(screen.queryByRole('group', { name: '条件2' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: '回答を更新する' }));
+    expect(saveAnswer).toHaveBeenCalledWith('room9', 'MT', {
+      choice: 'cond',
+      patterns: [{ people: ['b'], need: 1, minTotal: 0 }],
     });
   });
 
@@ -77,7 +139,7 @@ describe('MemberPage answer form', () => {
         memberView({
           me: {
             id: 'me',
-            answer: { choice: 'cond', condPeople: ['gone'], condNeed: 1, condMinTotal: 0, updatedAt: '2026-11-20T12:03:00Z' },
+            answer: { choice: 'cond', patterns: [{ people: ['gone'], need: 1, minTotal: 0 }], updatedAt: '2026-11-20T12:03:00Z' },
             saveCount: 3,
             claimedAt: '2026-11-18T10:40:00Z',
             conditionNotice: true,

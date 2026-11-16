@@ -62,8 +62,20 @@ for (const name of ['A', 'B']) {
   check(`second claim ${name} → 410`, again.status === 410);
 }
 
-const saveA = await req('PUT', `/api/rooms/${roomId}/me/answer`, { choice: 'cond', condPeople: [ids.B], condNeed: 1 }, { 'X-Member-Token': tokens.A });
-check('save conditional answer → 200', saveA.status === 200 && saveA.json.me.saveCount === 1);
+// OR of two patterns: "B comes" or "at least 5 others come" (only the first can hold).
+const saveA = await req(
+  'PUT',
+  `/api/rooms/${roomId}/me/answer`,
+  {
+    choice: 'cond',
+    patterns: [
+      { people: [ids.B], need: 1, minTotal: 0 },
+      { people: [], need: 0, minTotal: 1 },
+    ],
+  },
+  { 'X-Member-Token': tokens.A },
+);
+check('save conditional answer (2 OR-patterns) → 200', saveA.status === 200 && saveA.json.me.saveCount === 1 && saveA.json.me.answer?.patterns?.length === 2);
 const saveB = await req('PUT', `/api/rooms/${roomId}/me/answer`, { choice: 'yes' }, { 'X-Member-Token': tokens.B });
 check('save yes → 200', saveB.status === 200);
 
