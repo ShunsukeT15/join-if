@@ -31,6 +31,10 @@ npm run dev:web     # ターミナル2: 画面 http://localhost:5173
 | 環境変数・Terraform 変数 | [env-reference](docs/runbooks/env-reference.md) |
 | 費用 | [AWS_COST_ESTIMATE](docs/AWS_COST_ESTIMATE.md)（約 21 USD/月） |
 
+## 開発ルール
+
+AI エージェント・開発者向けのルール（秘匿性の不変条件、層の依存方向、マイグレーション、デプロイの注意など）は [AGENTS.md](AGENTS.md) にまとめています。
+
 ## 構成
 
 ```text

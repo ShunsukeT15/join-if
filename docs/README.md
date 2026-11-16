@@ -1,5 +1,7 @@
 # ドキュメント一覧
 
+AI エージェントや開発者が守るルールは [AGENTS.md](../AGENTS.md)（Claude Code 向けの補足は [CLAUDE.md](../CLAUDE.md)）。
+
 ## 手順書（runbooks）
 
 上から順に読めば、ゼロから本番運用までたどり着けるように並べています。
