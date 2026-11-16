@@ -12,6 +12,8 @@ export const LIMITS = {
   deadlineTextMax: 50,
   messageMax: 500,
   nameMax: 50,
+  /** Max OR-patterns in one conditional answer. */
+  maxPatterns: 5,
 } as const;
 
 export const HEADERS = {
@@ -44,11 +46,21 @@ export interface AdminMember extends MemberSummary {
   inviteUsed: boolean;
 }
 
+/**
+ * One condition pattern. Inside a pattern both parts must hold (AND):
+ * - at least `need` of `people` attend (need = 0 → no person part)
+ * - at least `minTotal` attendees other than me (0 → no headcount part)
+ */
+export interface PatternDto {
+  people: string[];
+  need: number;
+  minTotal: number;
+}
+
 export interface AnswerDto {
   choice: Choice;
-  condPeople: string[];
-  condNeed: number;
-  condMinTotal: number;
+  /** For "cond": attend if ANY pattern holds (OR). Empty for "yes" / "no". */
+  patterns: PatternDto[];
   updatedAt: string;
 }
 
@@ -80,9 +92,8 @@ export interface AddMemberRequest {
 
 export interface SaveAnswerRequest {
   choice: Choice;
-  condPeople?: string[];
-  condNeed?: number;
-  condMinTotal?: number;
+  /** Required (1..maxPatterns) when choice is "cond"; ignored otherwise. */
+  patterns?: PatternDto[];
 }
 
 // ---- Responses ----

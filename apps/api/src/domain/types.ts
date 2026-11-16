@@ -28,18 +28,24 @@ export interface Member {
   createdAt: Date;
 }
 
-export interface Condition {
-  /** Member ids chosen in the person condition (never includes self). */
-  condPeople: string[];
-  /** N: at least N of condPeople must attend. 0 = no person condition. */
-  condNeed: number;
-  /** M: at least M attendees other than self. 0 = no headcount condition. */
-  condMinTotal: number;
+/**
+ * One condition pattern; both parts must hold (AND).
+ * A conditional answer holds several patterns and is satisfied if ANY holds (OR).
+ */
+export interface Pattern {
+  /** Member ids chosen in the person part (never includes self). */
+  people: string[];
+  /** N: at least N of `people` must attend. 0 = no person part. */
+  need: number;
+  /** M: at least M attendees other than self. 0 = no headcount part. */
+  minTotal: number;
 }
 
-export interface Answer extends Condition {
+export interface Answer {
   memberId: string;
   choice: Choice;
+  /** Non-empty only for "cond". */
+  patterns: Pattern[];
   updatedAt: Date;
 }
 

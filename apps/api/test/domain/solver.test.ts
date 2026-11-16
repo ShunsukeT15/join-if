@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { isSatisfied, solve, type SolverAnswer } from '../../src/domain/solver.js';
+import type { Pattern } from '../../src/domain/types.js';
 
-const yes: SolverAnswer = { choice: 'yes', condPeople: [], condNeed: 0, condMinTotal: 0 };
-const no: SolverAnswer = { choice: 'no', condPeople: [], condNeed: 0, condMinTotal: 0 };
+const yes: SolverAnswer = { choice: 'yes', patterns: [] };
+const no: SolverAnswer = { choice: 'no', patterns: [] };
+const pat = (people: string[], need: number, minTotal = 0): Pattern => ({ people, need, minTotal });
+/** A single-pattern conditional answer. */
 const cond = (people: string[], need: number, minTotal = 0): SolverAnswer => ({
   choice: 'cond',
-  condPeople: people,
-  condNeed: need,
-  condMinTotal: minTotal,
+  patterns: [pat(people, need, minTotal)],
 });
+/** OR of several patterns. */
+const anyOf = (...patterns: Pattern[]): SolverAnswer => ({ choice: 'cond', patterns });
 
 const run = (answers: Record<string, SolverAnswer | undefined>, members = Object.keys(answers)) => {
   const map = new Map<string, SolverAnswer>();
@@ -62,6 +65,46 @@ describe('solve: edge cases', () => {
   });
 });
 
+describe('solve: OR of patterns', () => {
+  // "(A and B) or (B and C)"
+  const xWants = anyOf(pat(['A', 'B'], 2), pat(['B', 'C'], 2));
+
+  it('first pattern holds', () => {
+    expect(run({ X: xWants, A: yes, B: yes, C: no })).toEqual(['A', 'B', 'X']);
+  });
+
+  it('second pattern holds', () => {
+    expect(run({ X: xWants, A: no, B: yes, C: yes })).toEqual(['B', 'C', 'X']);
+  });
+
+  it('neither holds (A and C without B)', () => {
+    expect(run({ X: xWants, A: yes, B: no, C: yes })).toEqual(['A', 'C']);
+  });
+
+  it('a single "2 of A,B,C" pattern would wrongly accept A and C', () => {
+    expect(run({ X: cond(['A', 'B', 'C'], 2), A: yes, B: no, C: yes })).toEqual(['A', 'C', 'X']);
+  });
+
+  it('person OR headcount: "if A comes, or if 3 others come"', () => {
+    const x = anyOf(pat(['A'], 1), pat([], 0, 3));
+    expect(run({ X: x, A: yes, B: no, C: no, D: no })).toEqual(['A', 'X']);
+    expect(run({ X: x, A: no, B: yes, C: yes, D: yes })).toEqual(['B', 'C', 'D', 'X']);
+    expect(run({ X: x, A: no, B: yes, C: yes, D: no })).toEqual(['B', 'C']);
+  });
+
+  it('mutual OR conditions keep both', () => {
+    expect(
+      run({ X: anyOf(pat(['Y'], 1), pat(['Z'], 1)), Y: anyOf(pat(['X'], 1)), Z: no }),
+    ).toEqual(['X', 'Y']);
+  });
+
+  it('an OR pattern can rescue a chain that a single pattern would break', () => {
+    // C needs 4 others (impossible with 4 members) OR A; B needs A and C; D needs B.
+    const answers = { A: yes, B: cond(['A', 'C'], 2), C: anyOf(pat([], 0, 4), pat(['A'], 1)), D: cond(['B'], 1) };
+    expect(run(answers)).toEqual(['A', 'B', 'C', 'D']);
+  });
+});
+
 // ---- Brute force cross-check (spec §10.1: ≤12 people, 10,000 cases) ----
 
 function mulberry32(seed: number) {
@@ -84,15 +127,20 @@ function randomCase(rand: () => number) {
     if (r < 0.3) answers.set(id, yes);
     else if (r < 0.4) answers.set(id, no);
     else {
-      const others = ids.filter((x) => x !== id && rand() < 0.35);
-      // include a removed member sometimes
-      if (rand() < 0.1) others.push('removed');
-      const usePeople = others.length > 0 && rand() < 0.8;
-      const need = usePeople ? 1 + Math.floor(rand() * others.length) : 0;
-      const useTotal = !usePeople || rand() < 0.3;
-      const minTotal = useTotal && n > 1 ? 1 + Math.floor(rand() * (n - 1)) : 0;
-      if (need === 0 && minTotal === 0) answers.set(id, yes);
-      else answers.set(id, cond(usePeople ? others : [], need, minTotal));
+      // 1–3 OR-patterns, each an AND of a person part and/or a headcount part.
+      const count = 1 + Math.floor(rand() * 3);
+      const patterns: Pattern[] = [];
+      for (let k = 0; k < count; k++) {
+        const others = ids.filter((x) => x !== id && rand() < 0.35);
+        // include a removed member sometimes
+        if (rand() < 0.1) others.push('removed');
+        const usePeople = others.length > 0 && rand() < 0.8;
+        const need = usePeople ? 1 + Math.floor(rand() * others.length) : 0;
+        const useTotal = !usePeople || rand() < 0.3;
+        const minTotal = useTotal && n > 1 ? 1 + Math.floor(rand() * (n - 1)) : 0;
+        if (need > 0 || minTotal > 0) patterns.push(pat(usePeople ? others : [], need, minTotal));
+      }
+      answers.set(id, patterns.length ? { choice: 'cond', patterns } : yes);
     }
   }
   return { ids, answers };
@@ -113,7 +161,7 @@ function bruteForce(ids: string[], answers: Map<string, SolverAnswer>): { best: 
     });
     const feasible = [...set].every((id) => {
       const a = answers.get(id)!;
-      return a.choice === 'yes' || isSatisfied(id, a, set);
+      return a.choice === 'yes' || isSatisfied(id, a.patterns, set);
     });
     if (!feasible) continue;
     if (set.size > best.size) {
@@ -128,7 +176,7 @@ function bruteForce(ids: string[], answers: Map<string, SolverAnswer>): { best: 
 }
 
 describe('solve: brute force cross-check', () => {
-  it('matches exhaustive search on 10,000 random cases', () => {
+  it('matches exhaustive search on 10,000 random cases (1–3 OR-patterns each)', () => {
     const rand = mulberry32(20261115);
     for (let i = 0; i < 10_000; i++) {
       const { ids, answers } = randomCase(rand);
@@ -148,7 +196,11 @@ describe('solve: performance', () => {
     // → one removal per iteration, a full cascade of 99 rounds.
     ids.forEach((id, i) => {
       const prev = ids[i - 1];
-      answers.set(id, prev ? cond([prev], 1) : cond([], 0, 99));
+      // Five OR-patterns each, all of which fail once the chain collapses.
+      answers.set(
+        id,
+        prev ? anyOf(pat([prev], 1), pat([], 0, 99), pat([prev], 1, 98), pat([], 0, 99), pat([prev], 1)) : cond([], 0, 99),
+      );
     });
     answers.set('m99', no);
     const t = performance.now();

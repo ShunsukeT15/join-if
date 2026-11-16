@@ -42,7 +42,7 @@ async function buildMemberView(tx: Tx, room: Room, me: Member): Promise<MemberVi
       answer: mine ? ownAnswer(mine) : null,
       saveCount,
       claimedAt: me.inviteUsedAt ? me.inviteUsedAt.toISOString() : null,
-      conditionNotice: mine ? hasStaleCondition(mine, memberIds) : false,
+      conditionNotice: mine ? hasStaleCondition(mine.patterns, memberIds) : false,
     },
     result: resultView(room, result, members),
   };

@@ -99,11 +99,10 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
       d.clock.advance(60_000);
       const v = await M.saveAnswer(d, roomId, member(a.token), {
         choice: 'cond',
-        condPeople: [b.id],
-        condNeed: 1,
+        patterns: [{ people: [b.id], need: 1, minTotal: 0 }],
       });
       expect(v.me.saveCount).toBe(2);
-      expect(v.me.answer).toMatchObject({ choice: 'cond', condPeople: [b.id], condNeed: 1, condMinTotal: 0 });
+      expect(v.me.answer).toMatchObject({ choice: 'cond', patterns: [{ people: [b.id], need: 1, minTotal: 0 }] });
       expect(v.members.map((m) => m.answered)).toEqual([true, false]);
 
       const bv = await M.getMemberView(d, roomId, member(b.token));
@@ -111,9 +110,29 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
       expect(JSON.stringify(bv)).not.toContain('"cond"');
     });
 
+    it('stores and returns OR-patterns, and closes with them', async () => {
+      const a = await addAndClaim('A');
+      const b = await addAndClaim('B');
+      const c = await addAndClaim('C');
+      const x = await addAndClaim('X');
+      const patterns = [
+        { people: [a.id, b.id], need: 2, minTotal: 0 },
+        { people: [b.id, c.id], need: 2, minTotal: 0 },
+      ];
+      const v = await M.saveAnswer(d, roomId, member(x.token), { choice: 'cond', patterns });
+      expect(v.me.answer?.patterns).toEqual(patterns);
+      expect((await M.getMemberView(d, roomId, member(x.token))).me.answer?.patterns).toEqual(patterns);
+
+      await M.saveAnswer(d, roomId, member(a.token), { choice: 'no' });
+      await M.saveAnswer(d, roomId, member(b.token), { choice: 'yes' });
+      await M.saveAnswer(d, roomId, member(c.token), { choice: 'yes' });
+      const closed = await A.closeRoom(d, roomId, admin(adminToken));
+      expect([...closed.result!.attending].sort()).toEqual([b.id, c.id, x.id].sort());
+    });
+
     it('validates answers', async () => {
       const a = await addAndClaim('A');
-      expect(await code(M.saveAnswer(d, roomId, member(a.token), { choice: 'cond', condPeople: [a.id], condNeed: 1 }))).toBe(
+      expect(await code(M.saveAnswer(d, roomId, member(a.token), { choice: 'cond', patterns: [{ people: [a.id], need: 1, minTotal: 0 }] }))).toBe(
         'validation',
       );
       expect(await code(M.saveAnswer(d, roomId, member(a.token), { choice: 'cond' }))).toBe('validation');
@@ -139,7 +158,7 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
       const a = await addAndClaim('A');
       const b = await addAndClaim('B');
       await M.saveAnswer(d, roomId, member(b.token), { choice: 'yes' });
-      await M.saveAnswer(d, roomId, member(a.token), { choice: 'cond', condPeople: [b.id], condNeed: 1 });
+      await M.saveAnswer(d, roomId, member(a.token), { choice: 'cond', patterns: [{ people: [b.id], need: 1, minTotal: 0 }] });
       await A.removeMember(d, roomId, admin(adminToken), b.id);
 
       expect(await code(M.getMemberView(d, roomId, member(b.token)))).toBe('not_found');
@@ -158,8 +177,8 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
       const b = await addAndClaim('B');
       const c = await addAndClaim('C');
       await addAndClaim('D'); // unanswered
-      await M.saveAnswer(d, roomId, member(a.token), { choice: 'cond', condPeople: [b.id], condNeed: 1 });
-      await M.saveAnswer(d, roomId, member(b.token), { choice: 'cond', condPeople: [a.id], condNeed: 1 });
+      await M.saveAnswer(d, roomId, member(a.token), { choice: 'cond', patterns: [{ people: [b.id], need: 1, minTotal: 0 }] });
+      await M.saveAnswer(d, roomId, member(b.token), { choice: 'cond', patterns: [{ people: [a.id], need: 1, minTotal: 0 }] });
       await M.saveAnswer(d, roomId, member(c.token), { choice: 'no' });
 
       const before = await A.getAdminView(d, roomId, admin(adminToken));

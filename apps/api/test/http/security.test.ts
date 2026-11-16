@@ -4,7 +4,7 @@ import { routes } from '../../src/presentation/http/routes.js';
 import { makeHarness } from '../support/http.js';
 
 /** Keys that describe an individual's answer or activity. Only the owner may see them. */
-const PRIVATE_KEYS = ['choice', 'condPeople', 'condNeed', 'condMinTotal', 'updatedAt', 'saveCount', 'claimedAt', 'conditionNotice', 'answer', 'me', 'memberToken'];
+const PRIVATE_KEYS = ['choice', 'patterns', 'people', 'need', 'minTotal', 'updatedAt', 'saveCount', 'claimedAt', 'conditionNotice', 'answer', 'me', 'memberToken'];
 
 function collectKeys(value: unknown, out = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((v) => collectKeys(v, out));
@@ -24,7 +24,13 @@ describe('secrecy: no one sees another person\'s answer', () => {
     await h.call('PUT', `/api/rooms/${roomId}/me/answer`, { tokens: { member: members.A!.token }, body: { choice: 'yes' } });
     await h.call('PUT', `/api/rooms/${roomId}/me/answer`, {
       tokens: { member: members.B!.token },
-      body: { choice: 'cond', condPeople: [members.A!.id], condNeed: 1, condMinTotal: 1 },
+      body: {
+        choice: 'cond',
+        patterns: [
+          { people: [members.A!.id], need: 1, minTotal: 1 },
+          { people: [members.C!.id], need: 1, minTotal: 0 },
+        ],
+      },
     });
 
     const responses = [
@@ -46,7 +52,7 @@ describe('secrecy: no one sees another person\'s answer', () => {
     const { roomId, members } = await h.setupRoom(['A', 'B']);
     await h.call('PUT', `/api/rooms/${roomId}/me/answer`, {
       tokens: { member: members.A!.token },
-      body: { choice: 'cond', condPeople: [members.B!.id], condNeed: 1 },
+      body: { choice: 'cond', patterns: [{ people: [members.B!.id], need: 1, minTotal: 0 }] },
     });
     const b = await h.call('GET', `/api/rooms/${roomId}/me`, { tokens: { member: members.B!.token } });
     expect(b.status).toBe(200);
@@ -66,7 +72,7 @@ describe('secrecy: no one sees another person\'s answer', () => {
       await h.call('PUT', `/api/rooms/${roomId}/me/answer`, { tokens: { member: members.Y!.token }, body: { choice: 'no' } });
       await h.call('PUT', `/api/rooms/${roomId}/me/answer`, {
         tokens: { member: members.X!.token },
-        body: variant === 'no' ? { choice: 'no' } : { choice: 'cond', condPeople: [members.Y!.id], condNeed: 1 },
+        body: variant === 'no' ? { choice: 'no' } : { choice: 'cond', patterns: [{ people: [members.Y!.id], need: 1, minTotal: 0 }] },
       });
       const closed = await h.call('POST', `/api/rooms/${roomId}/close`, { tokens: { admin: adminToken } });
       const adminView = await h.call('GET', `/api/rooms/${roomId}/admin`, { tokens: { admin: adminToken } });
@@ -322,9 +328,17 @@ describe('validation errors', () => {
       return { ...r, other: o };
     })();
     const save = (body: unknown) => h.call('PUT', `/api/rooms/${roomId}/me/answer`, { tokens: { member: members.A!.token }, body });
-    expect((await save({ choice: 'cond', condPeople: [members.A!.id], condNeed: 1 })).json.error.fields.condPeople).toBeDefined();
-    expect((await save({ choice: 'cond', condPeople: [other.members.Z!.id], condNeed: 1 })).json.error.fields.condPeople).toBeDefined();
-    expect((await save({ choice: 'cond', condPeople: [members.B!.id], condNeed: 2 })).json.error.fields.condNeed).toBeDefined();
+    const pt = (people: string[], need: number, minTotal = 0) => ({ people, need, minTotal });
+    expect((await save({ choice: 'cond', patterns: [pt([members.A!.id], 1)] })).json.error.fields['patterns.0.people']).toBeDefined();
+    expect(
+      (await save({ choice: 'cond', patterns: [pt([members.B!.id], 1), pt([other.members.Z!.id], 1)] })).json.error.fields['patterns.1.people'],
+    ).toBeDefined();
+    expect((await save({ choice: 'cond', patterns: [pt([members.B!.id], 2)] })).json.error.fields['patterns.0.need']).toBeDefined();
+    expect((await save({ choice: 'cond', patterns: Array.from({ length: 6 }, () => pt([members.B!.id], 1)) })).status).toBe(422);
+    // Old (pre-OR) request shape is rejected as unknown fields.
+    expect((await save({ choice: 'cond', condPeople: [members.B!.id], condNeed: 1 })).status).toBe(422);
+    // Unknown keys inside a pattern are rejected too.
+    expect((await save({ choice: 'cond', patterns: [{ ...pt([members.B!.id], 1), memberId: 'x' }] })).status).toBe(422);
     expect((await save({ choice: 'cond' })).status).toBe(422);
     expect((await save({ choice: 'maybe' })).status).toBe(422);
   });

@@ -33,9 +33,7 @@ export function adminMember(member: Member, answeredIds: ReadonlySet<string>, to
 export function ownAnswer(answer: Answer): AnswerDto {
   return {
     choice: answer.choice,
-    condPeople: [...answer.condPeople],
-    condNeed: answer.condNeed,
-    condMinTotal: answer.condMinTotal,
+    patterns: answer.patterns.map((p) => ({ people: [...p.people], need: p.need, minTotal: p.minTotal })),
     updatedAt: answer.updatedAt.toISOString(),
   };
 }

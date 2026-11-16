@@ -1,6 +1,6 @@
 import type { Tx, UnitOfWork } from '../../../application/ports/persistence.js';
 import { notFound } from '../../../domain/errors.js';
-import type { Answer, AuditEvent, Choice, Member, Result, Room, RoomStatus } from '../../../domain/types.js';
+import type { Answer, AuditEvent, Choice, Member, Pattern, Result, Room, RoomStatus } from '../../../domain/types.js';
 import type { SqlClient, SqlPool } from './pgClient.js';
 
 interface RoomRow {
@@ -28,9 +28,7 @@ interface MemberRow {
 interface AnswerRow {
   member_id: string;
   choice: Choice;
-  cond_people: string[];
-  cond_need: number;
-  cond_min_total: number;
+  cond_patterns: Pattern[] | string;
   updated_at: Date;
 }
 
@@ -64,9 +62,9 @@ const member = (r: MemberRow): Member => ({
 const answer = (r: AnswerRow): Answer => ({
   memberId: r.member_id,
   choice: r.choice,
-  condPeople: r.cond_people ?? [],
-  condNeed: r.cond_need,
-  condMinTotal: r.cond_min_total,
+  patterns: (typeof r.cond_patterns === 'string' ? JSON.parse(r.cond_patterns) : r.cond_patterns ?? []).map(
+    (p: Pattern) => ({ people: p.people ?? [], need: p.need ?? 0, minTotal: p.minTotal ?? 0 }),
+  ),
   updatedAt: toDate(r.updated_at),
 });
 
@@ -167,11 +165,16 @@ function makeTx(db: SqlClient): Tx {
       },
       async upsert(a) {
         await db.query(
-          `insert into answers (member_id, choice, cond_people, cond_need, cond_min_total, updated_at)
-           values ($1::uuid, $2, $3::uuid[], $4, $5, $6)
-           on conflict (member_id) do update set choice=excluded.choice, cond_people=excluded.cond_people,
-             cond_need=excluded.cond_need, cond_min_total=excluded.cond_min_total, updated_at=excluded.updated_at`,
-          [a.memberId, a.choice, a.condPeople, a.condNeed, a.condMinTotal, a.updatedAt],
+          `insert into answers (member_id, choice, cond_patterns, updated_at)
+           values ($1::uuid, $2, $3::jsonb, $4)
+           on conflict (member_id) do update set choice=excluded.choice, cond_patterns=excluded.cond_patterns,
+             updated_at=excluded.updated_at`,
+          [
+            a.memberId,
+            a.choice,
+            JSON.stringify(a.patterns.map((p) => ({ people: p.people, need: p.need, minTotal: p.minTotal }))),
+            a.updatedAt,
+          ],
         );
       },
       async delete(memberId) {

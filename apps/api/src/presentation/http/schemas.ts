@@ -27,11 +27,16 @@ export const addMemberSchema = z.strictObject({
   name: text(50),
 });
 
+const patternSchema = z.strictObject({
+  people: z.array(z.string().max(64)).max(100),
+  need: z.number().int().min(0).max(100),
+  minTotal: z.number().int().min(0).max(100),
+});
+
 export const saveAnswerSchema = z.strictObject({
   choice: z.enum(['yes', 'no', 'cond']),
-  condPeople: z.array(z.string().max(64)).max(100).optional(),
-  condNeed: z.number().int().min(0).max(100).optional(),
-  condMinTotal: z.number().int().min(0).max(100).optional(),
+  // Upper bound (LIMITS.maxPatterns) is enforced with a friendly message in the domain.
+  patterns: z.array(patternSchema).max(20).optional(),
 });
 
 export const emptySchema = z.strictObject({});
