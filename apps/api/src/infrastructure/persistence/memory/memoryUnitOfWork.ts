@@ -49,6 +49,11 @@ function makeTx(s: State): Tx {
         if (!s.rooms.has(room.id)) throw notFound();
         s.rooms.set(room.id, clone(room));
       },
+      async findOpenDue(now) {
+        return [...s.rooms.values()]
+          .filter((r) => r.status === 'open' && r.deadlineAt !== null && r.deadlineAt <= now)
+          .map((r) => r.id);
+      },
       async deleteExpired(now) {
         const expired = [...s.rooms.values()].filter((r) => r.purgeAfter <= now);
         for (const r of expired) deleteRoomCascade(r.id);
@@ -67,7 +72,7 @@ function makeTx(s: State): Tx {
         return m && m.roomId === roomId ? clone(m) : null;
       },
       async findByInviteTokenHash(hash) {
-        for (const m of s.members.values()) if (m.inviteTokenHash === hash) return clone(m);
+        for (const m of s.members.values()) if (m.inviteTokenHash !== null && m.inviteTokenHash === hash) return clone(m);
         return null;
       },
       async findByMemberTokenHash(hash) {

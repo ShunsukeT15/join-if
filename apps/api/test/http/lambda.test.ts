@@ -57,3 +57,9 @@ describe('lambda handler', () => {
     expect(viewerIp(undefined)).toBeUndefined();
   });
 });
+
+describe('lambda close-due event', () => {
+  it('returns the number of rooms closed', async () => {
+    expect(await handler({ action: 'close-due' }, {} as never)).toEqual({ closed: 0 });
+  });
+});

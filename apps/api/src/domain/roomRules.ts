@@ -38,3 +38,30 @@ export function normalizeMemberName(name: string): string {
   if ([...v].length > LIMITS.nameMax) throw validation({ name: `${LIMITS.nameMax}文字以内で入力してください` });
   return v;
 }
+
+const MAX_DEADLINE_DAYS = 365;
+
+/**
+ * Parses an automatic deadline. undefined = unchanged, null = no automatic deadline.
+ * Must be a valid time in the future (at least 1 minute ahead) and within a year.
+ */
+export function normalizeDeadline(input: string | null | undefined, now: Date): Date | null | undefined {
+  if (input === undefined || input === null) return input;
+  const t = Date.parse(input);
+  if (Number.isNaN(t)) throw validation({ deadlineAt: '日時の形式が正しくありません' });
+  if (t < now.getTime() + 60_000) throw validation({ deadlineAt: '締切日時は今より後の時刻を指定してください' });
+  if (t > now.getTime() + MAX_DEADLINE_DAYS * 24 * 60 * 60 * 1000) {
+    throw validation({ deadlineAt: '締切日時は1年以内で指定してください' });
+  }
+  return new Date(t);
+}
+
+/** True once the automatic deadline has passed. */
+export function isPastDeadline(room: { deadlineAt: Date | null }, now: Date): boolean {
+  return room.deadlineAt !== null && room.deadlineAt.getTime() <= now.getTime();
+}
+
+/** Answers and member changes are accepted only while open and before the automatic deadline. */
+export function acceptsChanges(room: { status: string; deadlineAt: Date | null }, now: Date): boolean {
+  return room.status === 'open' && !isPastDeadline(room, now);
+}

@@ -9,6 +9,7 @@ export interface Tokens {
   admin?: string;
   invite?: string;
   member?: string;
+  group?: string;
 }
 
 export function makeHarness(opts: { rateLimiter?: RateLimiter } = {}) {
@@ -26,6 +27,7 @@ export function makeHarness(opts: { rateLimiter?: RateLimiter } = {}) {
     if (init.tokens?.admin !== undefined) headers[HEADERS.admin] = init.tokens.admin;
     if (init.tokens?.invite !== undefined) headers[HEADERS.invite] = init.tokens.invite;
     if (init.tokens?.member !== undefined) headers[HEADERS.member] = init.tokens.member;
+    if (init.tokens?.group !== undefined) headers[HEADERS.group] = init.tokens.group;
     if (init.ip) headers['x-test-ip'] = init.ip;
     let body: string | undefined;
     if (init.rawBody !== undefined) body = init.rawBody;
@@ -53,5 +55,25 @@ export function makeHarness(opts: { rateLimiter?: RateLimiter } = {}) {
     return { roomId, adminToken, members };
   }
 
-  return { app, uow, deps, call, setupRoom };
+  /** Creates a group-mode room; every name in `names` is picked (claimed) through the group URL. */
+  async function setupGroupRoom(names: string[], title = 'グループ', extraUnpicked: string[] = []) {
+    const created = await call('POST', '/api/rooms', { body: { title, inviteMode: 'group' } });
+    const roomId: string = created.json.roomId;
+    const adminToken: string = created.json.adminToken;
+    const view = await call('GET', `/api/rooms/${roomId}/admin`, { tokens: { admin: adminToken } });
+    const groupToken: string = view.json.groupToken;
+    const members: Record<string, { id: string; token: string }> = {};
+    const unpicked: Record<string, string> = {};
+    for (const name of [...names, ...extraUnpicked]) {
+      const added = await call('POST', `/api/rooms/${roomId}/members`, { tokens: { admin: adminToken }, body: { name } });
+      const id: string = added.json.member.id;
+      if (names.includes(name)) {
+        const claimed = await call('POST', `/api/rooms/${roomId}/group/claim`, { tokens: { group: groupToken }, body: { memberId: id } });
+        members[name] = { id, token: claimed.json.memberToken };
+      } else unpicked[name] = id;
+    }
+    return { roomId, adminToken, groupToken, members, unpicked };
+  }
+
+  return { app, uow, deps, call, setupRoom, setupGroupRoom };
 }

@@ -14,7 +14,14 @@ import type { TokenService } from './ports/services.js';
  */
 
 export function roomInfo(room: Room): RoomInfo {
-  return { title: room.title, deadlineText: room.deadlineText, message: room.message, status: room.status };
+  return {
+    title: room.title,
+    deadlineText: room.deadlineText,
+    message: room.message,
+    status: room.status,
+    inviteMode: room.inviteMode,
+    deadlineAt: room.deadlineAt ? room.deadlineAt.toISOString() : null,
+  };
 }
 
 export function memberSummary(member: Member, answeredIds: ReadonlySet<string>): MemberSummary {

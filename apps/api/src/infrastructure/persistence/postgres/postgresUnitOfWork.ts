@@ -1,6 +1,16 @@
 import type { Tx, UnitOfWork } from '../../../application/ports/persistence.js';
 import { notFound } from '../../../domain/errors.js';
-import type { Answer, AuditEvent, Choice, Member, Pattern, Result, Room, RoomStatus } from '../../../domain/types.js';
+import type {
+  Answer,
+  AuditEvent,
+  Choice,
+  InviteMode,
+  Member,
+  Pattern,
+  Result,
+  Room,
+  RoomStatus,
+} from '../../../domain/types.js';
 import type { SqlClient, SqlPool } from './pgClient.js';
 
 interface RoomRow {
@@ -9,7 +19,11 @@ interface RoomRow {
   deadline_text: string;
   message: string;
   status: RoomStatus;
+  invite_mode: InviteMode;
   admin_token_hash: string;
+  group_token_hash: string | null;
+  group_token_enc: string | null;
+  deadline_at: Date | null;
   created_at: Date;
   closed_at: Date | null;
   purge_after: Date;
@@ -18,7 +32,7 @@ interface MemberRow {
   id: string;
   room_id: string;
   display_name: string;
-  invite_token_hash: string;
+  invite_token_hash: string | null;
   invite_token_enc: string | null;
   invite_used_at: Date | null;
   member_token_hash: string | null;
@@ -41,7 +55,11 @@ const room = (r: RoomRow): Room => ({
   deadlineText: r.deadline_text,
   message: r.message,
   status: r.status,
+  inviteMode: r.invite_mode,
   adminTokenHash: r.admin_token_hash,
+  groupTokenHash: r.group_token_hash,
+  groupTokenEnc: r.group_token_enc,
+  deadlineAt: toDateOrNull(r.deadline_at),
   createdAt: toDate(r.created_at),
   closedAt: toDateOrNull(r.closed_at),
   purgeAfter: toDate(r.purge_after),
@@ -76,9 +94,24 @@ function makeTx(db: SqlClient): Tx {
     rooms: {
       async insert(r) {
         await db.query(
-          `insert into rooms (id, title, deadline_text, message, status, admin_token_hash, created_at, closed_at, purge_after)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-          [r.id, r.title, r.deadlineText, r.message, r.status, r.adminTokenHash, r.createdAt, r.closedAt, r.purgeAfter],
+          `insert into rooms (id, title, deadline_text, message, status, admin_token_hash, created_at, closed_at, purge_after,
+             invite_mode, group_token_hash, group_token_enc, deadline_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [
+            r.id,
+            r.title,
+            r.deadlineText,
+            r.message,
+            r.status,
+            r.adminTokenHash,
+            r.createdAt,
+            r.closedAt,
+            r.purgeAfter,
+            r.inviteMode,
+            r.groupTokenHash,
+            r.groupTokenEnc,
+            r.deadlineAt,
+          ],
         );
       },
       async findById(id) {
@@ -87,10 +120,19 @@ function makeTx(db: SqlClient): Tx {
       },
       async update(r) {
         const { rowCount } = await db.query(
-          `update rooms set title=$2, deadline_text=$3, message=$4, status=$5, closed_at=$6, purge_after=$7 where id=$1`,
-          [r.id, r.title, r.deadlineText, r.message, r.status, r.closedAt, r.purgeAfter],
+          `update rooms set title=$2, deadline_text=$3, message=$4, status=$5, closed_at=$6, purge_after=$7,
+             group_token_hash=$8, group_token_enc=$9, deadline_at=$10
+           where id=$1`,
+          [r.id, r.title, r.deadlineText, r.message, r.status, r.closedAt, r.purgeAfter, r.groupTokenHash, r.groupTokenEnc, r.deadlineAt],
         );
         if (rowCount === 0) throw notFound();
+      },
+      async findOpenDue(now) {
+        const { rows } = await db.query<{ id: string }>(
+          `select id from rooms where status = 'open' and deadline_at is not null and deadline_at <= $1`,
+          [now],
+        );
+        return rows.map((r) => r.id);
       },
       async deleteExpired(now) {
         const { rowCount } = await db.query('delete from rooms where purge_after <= $1', [now]);

@@ -95,24 +95,44 @@ describe('secrecy: no one sees another person\'s answer', () => {
 
 type Fixture = Awaited<ReturnType<typeof makeFixture>>;
 
+/** Two individual-mode rooms and two group-mode rooms in one store. */
 async function makeFixture() {
   const h = makeHarness();
   const room = await h.setupRoom(['A', 'B']);
   const other = await h.setupRoom(['Z'], 'other');
-  // An unused invite in each room.
+  // An unused invite in each individual room.
   const pending = await h.call('POST', `/api/rooms/${room.roomId}/members`, { tokens: { admin: room.adminToken }, body: { name: 'P' } });
   const otherPending = await h.call('POST', `/api/rooms/${other.roomId}/members`, { tokens: { admin: other.adminToken }, body: { name: 'Q' } });
+  const groupRoom = await h.setupGroupRoom(['A', 'B'], 'g', ['P']);
+  const groupOther = await h.setupGroupRoom(['Z'], 'g-other', ['Q']);
   return {
     h,
-    room,
-    other,
-    pendingInvite: pending.json.member.inviteToken as string,
-    otherPendingInvite: otherPending.json.member.inviteToken as string,
+    indiv: { room, other, pendingInvite: pending.json.member.inviteToken as string, otherPendingInvite: otherPending.json.member.inviteToken as string },
+    group: { room: groupRoom, other: groupOther },
   };
 }
 
+type Kind = 'admin' | 'invite' | 'member' | 'group';
+
+/** The rooms a route is exercised against: group routes need group-mode rooms. */
+function ctxFor(f: Fixture, path: string) {
+  const isGroup = path.includes('/group');
+  const room = isGroup ? f.group.room : f.indiv.room;
+  const other = isGroup ? f.group.other : f.indiv.other;
+  const tokenOf = (kind: Kind, which: 'room' | 'other'): string => {
+    const r = which === 'room' ? room : other;
+    if (kind === 'admin') return r.adminToken;
+    if (kind === 'member') return which === 'room' ? r.members.A!.token : r.members.Z!.token;
+    if (kind === 'group') return which === 'room' ? f.group.room.groupToken : f.group.other.groupToken;
+    return which === 'room' ? f.indiv.pendingInvite : f.indiv.otherPendingInvite;
+  };
+  const unpicked = (which: 'room' | 'other') => (which === 'room' ? f.group.room.unpicked.P! : f.group.other.unpicked.Q!);
+  return { room, other, tokenOf, unpicked };
+}
+type Ctx = ReturnType<typeof ctxFor>;
+
 /** A valid body per route. A new route without an entry fails the test below. */
-const SAMPLE_BODIES: Record<string, (f: Fixture) => unknown> = {
+const SAMPLE_BODIES: Record<string, (c: Ctx) => unknown> = {
   'POST /api/rooms': () => ({ title: 't' }),
   'GET /api/rooms/:roomId/admin': () => undefined,
   'PATCH /api/rooms/:roomId/admin': () => ({ title: 'changed' }),
@@ -124,12 +144,9 @@ const SAMPLE_BODIES: Record<string, (f: Fixture) => unknown> = {
   'POST /api/rooms/:roomId/claim': () => undefined,
   'GET /api/rooms/:roomId/me': () => undefined,
   'PUT /api/rooms/:roomId/me/answer': () => ({ choice: 'yes' }),
-};
-
-const tokenOf = (f: Fixture, kind: 'admin' | 'invite' | 'member', which: 'room' | 'other') => {
-  if (kind === 'admin') return which === 'room' ? f.room.adminToken : f.other.adminToken;
-  if (kind === 'invite') return which === 'room' ? f.pendingInvite : f.otherPendingInvite;
-  return which === 'room' ? f.room.members.A!.token : f.other.members.Z!.token;
+  'POST /api/rooms/:roomId/group/reissue': () => undefined,
+  'GET /api/rooms/:roomId/group': () => undefined,
+  'POST /api/rooms/:roomId/group/claim': (c) => ({ memberId: c.unpicked('room') }),
 };
 
 describe('authorization: every protected route rejects bad credentials without side effects', () => {
@@ -138,24 +155,26 @@ describe('authorization: every protected route rejects bad credentials without s
   });
 
   const protectedRoutes = routes.filter((r) => r.auth !== null);
-  const kinds = ['admin', 'invite', 'member'] as const;
+  const kinds: Kind[] = ['admin', 'invite', 'member', 'group'];
 
   for (const route of protectedRoutes) {
     const key = `${route.method} ${route.path}`;
     describe(key, () => {
       let f: Fixture;
+      let c: Ctx;
       beforeEach(async () => {
         f = await makeFixture();
+        c = ctxFor(f, route.path);
       });
 
       const path = (roomId: string, memberId: string) =>
         route.path.replace(':roomId', roomId).replace(':memberId', memberId);
 
-      const expectRejected = async (init: { tokens: Record<string, string>; roomId?: string; memberId?: string }) => {
+      const expectRejected = async (init: { tokens: Record<string, string>; roomId?: string; memberId?: string; body?: unknown }) => {
         const before = f.h.uow.dump();
-        const res = await f.h.call(route.method, path(init.roomId ?? f.room.roomId, init.memberId ?? f.room.members.B!.id), {
+        const res = await f.h.call(route.method, path(init.roomId ?? c.room.roomId, init.memberId ?? c.room.members.B!.id), {
           tokens: init.tokens,
-          body: SAMPLE_BODIES[key]!(f),
+          body: init.body ?? SAMPLE_BODIES[key]!(c),
         });
         expect(res.status).toBe(404);
         expect(f.h.uow.dump()).toEqual(before);
@@ -168,40 +187,53 @@ describe('authorization: every protected route rejects bad credentials without s
       for (const kind of kinds.filter((k) => k !== route.auth)) {
         it(`${kind} token instead of ${route.auth}`, async () => {
           // Both in its own header and in the header the route expects.
-          await expectRejected({ tokens: { [kind]: tokenOf(f, kind, 'room') } });
-          await expectRejected({ tokens: { [route.auth!]: tokenOf(f, kind, 'room') } });
+          await expectRejected({ tokens: { [kind]: c.tokenOf(kind, 'room') } });
+          await expectRejected({ tokens: { [route.auth!]: c.tokenOf(kind, 'room') } });
         });
       }
 
       it('token of another room', async () => {
-        await expectRejected({ tokens: { [route.auth!]: tokenOf(f, route.auth!, 'other') } });
+        await expectRejected({ tokens: { [route.auth!]: c.tokenOf(route.auth!, 'other') } });
       });
 
       it('valid token, path points at another room', async () => {
-        await expectRejected({ tokens: { [route.auth!]: tokenOf(f, route.auth!, 'room') }, roomId: f.other.roomId });
+        await expectRejected({ tokens: { [route.auth!]: c.tokenOf(route.auth!, 'room') }, roomId: c.other.roomId });
       });
 
       if (route.path.includes(':memberId')) {
         it('memberId of another room', async () => {
-          await expectRejected({ tokens: { admin: f.room.adminToken }, memberId: f.other.members.Z!.id });
+          await expectRejected({ tokens: { admin: c.room.adminToken }, memberId: c.other.members.Z!.id });
         });
         it('malformed memberId', async () => {
-          await expectRejected({ tokens: { admin: f.room.adminToken }, memberId: 'not-a-uuid' });
+          await expectRejected({ tokens: { admin: c.room.adminToken }, memberId: 'not-a-uuid' });
+        });
+      }
+
+      if (key === 'POST /api/rooms/:roomId/group/claim') {
+        it('memberId (in the body) of another room', async () => {
+          await expectRejected({ tokens: { group: c.tokenOf('group', 'room') }, body: { memberId: c.unpicked('other') } });
         });
       }
 
       it('succeeds with the right token (sanity)', async () => {
         if (route.path.endsWith('/reopen')) {
-          await f.h.call('POST', `/api/rooms/${f.room.roomId}/close`, { tokens: { admin: f.room.adminToken } });
+          await f.h.call('POST', `/api/rooms/${c.room.roomId}/close`, { tokens: { admin: c.room.adminToken } });
         }
-        const res = await f.h.call(route.method, path(f.room.roomId, f.room.members.B!.id), {
-          tokens: { [route.auth!]: tokenOf(f, route.auth!, 'room') },
-          body: SAMPLE_BODIES[key]!(f),
+        const res = await f.h.call(route.method, path(c.room.roomId, c.room.members.B!.id), {
+          tokens: { [route.auth!]: c.tokenOf(route.auth!, 'room') },
+          body: SAMPLE_BODIES[key]!(c),
         });
         expect(res.status).toBe(route.status);
       });
     });
   }
+
+  it('group routes reject individual-mode rooms, and individual claim rejects group rooms', async () => {
+    const f = await makeFixture();
+    const indivAdmin = { admin: f.indiv.room.adminToken };
+    expect((await f.h.call('POST', `/api/rooms/${f.indiv.room.roomId}/group/reissue`, { tokens: indivAdmin })).status).toBe(404);
+    expect((await f.h.call('GET', `/api/rooms/${f.indiv.room.roomId}/group`, { tokens: { group: f.group.room.groupToken } })).status).toBe(404);
+  });
 });
 
 describe('tampering: server-owned fields are rejected', () => {

@@ -19,6 +19,8 @@ export class AppError extends Error {
 export const notFound = () => new AppError('not_found', '見つかりません');
 export const inviteUsed = () =>
   new AppError('invite_used', 'このURLは使用済みです。招待した人に再発行を依頼してください');
+export const nameTaken = () =>
+  new AppError('invite_used', 'この名前はすでに選ばれています。自分が選んだ覚えがない場合は、招待した人にリセットを依頼してください');
 export const roomClosed = () => new AppError('closed', '受付は終了しました');
 export const conflict = (message: string) => new AppError('conflict', message);
 export const validation = (fields: Record<string, string>, message = '入力内容を確認してください') =>

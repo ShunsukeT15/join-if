@@ -34,12 +34,25 @@ void purge();
 const timer = setInterval(purge, config.purgeIntervalMs);
 timer.unref();
 
+// Automatic deadlines: check every minute (rooms are also closed lazily when opened).
+const closeDue = async () => {
+  try {
+    const r = await container.closeDue();
+    if (r.closed > 0) console.log(`[close-due] closed ${r.closed} room(s)`);
+  } catch (e) {
+    console.error('[close-due] failed', e instanceof Error ? e.message : e);
+  }
+};
+const closeTimer = setInterval(closeDue, 60_000);
+closeTimer.unref();
+
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`[api] listening on http://localhost:${info.port} (store=${config.dataStore})`);
 });
 
 const shutdown = async () => {
   clearInterval(timer);
+  clearInterval(closeTimer);
   server.close();
   await container.close();
   process.exit(0);

@@ -9,6 +9,8 @@ export interface RoomRepository {
   insert(room: Room): Promise<void>;
   findById(id: string): Promise<Room | null>;
   update(room: Room): Promise<void>;
+  /** Ids of open rooms whose automatic deadline has passed. */
+  findOpenDue(now: Date): Promise<string[]>;
   /** Deletes rooms whose purgeAfter is past (members/answers/results/audit cascade). */
   deleteExpired(now: Date): Promise<number>;
 }

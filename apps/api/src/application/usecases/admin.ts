@@ -3,19 +3,21 @@ import type {
   AdminViewResponse,
   CreateRoomRequest,
   CreateRoomResponse,
+  GroupTokenResponse,
   ReissueResponse,
   UpdateSettingsRequest,
 } from '@himitsu/contracts';
-import {
-  addDays,
-  LIMITS,
-  RETENTION_AFTER_CLOSE_DAYS,
-  RETENTION_UNCLOSED_DAYS,
-} from '../../domain/constants.js';
+import { addDays, LIMITS, RETENTION_AFTER_CLOSE_DAYS, RETENTION_UNCLOSED_DAYS } from '../../domain/constants.js';
 import { conflict, notFound, roomClosed, validation } from '../../domain/errors.js';
-import { normalizeMemberName, normalizeSettings } from '../../domain/roomRules.js';
-import { solve, type SolverAnswer } from '../../domain/solver.js';
+import {
+  acceptsChanges,
+  isPastDeadline,
+  normalizeDeadline,
+  normalizeMemberName,
+  normalizeSettings,
+} from '../../domain/roomRules.js';
 import type { Member, Room } from '../../domain/types.js';
+import { closeInTx, ensureClosedIfDue } from './closing.js';
 import { authorize, type Credential } from '../authorize.js';
 import type { Deps } from '../deps.js';
 import type { Tx } from '../ports/persistence.js';
@@ -29,6 +31,9 @@ export async function createRoom(deps: Deps, input: CreateRoomRequest): Promise<
   );
   const adminToken = deps.tokens.generate();
   const now = deps.clock.now();
+  const deadlineAt = normalizeDeadline(input.deadlineAt, now) ?? null;
+  const inviteMode = input.inviteMode ?? 'individual';
+  const groupToken = inviteMode === 'group' ? deps.tokens.generate() : null;
 
   return deps.uow.transaction(async (tx) => {
     let id = deps.ids.roomId();
@@ -39,7 +44,11 @@ export async function createRoom(deps: Deps, input: CreateRoomRequest): Promise<
       deadlineText: settings.deadlineText!,
       message: settings.message!,
       status: 'open',
+      inviteMode,
       adminTokenHash: deps.tokens.hash(adminToken),
+      groupTokenHash: groupToken ? deps.tokens.hash(groupToken) : null,
+      groupTokenEnc: groupToken ? deps.tokens.encrypt(groupToken) : null,
+      deadlineAt,
       createdAt: now,
       closedAt: null,
       purgeAfter: addDays(now, RETENTION_UNCLOSED_DAYS),
@@ -59,11 +68,13 @@ async function buildAdminView(deps: Deps, tx: Tx, room: Room): Promise<AdminView
     members: members.map((m) => adminMember(m, answered, deps.tokens)),
     unansweredCount: members.filter((m) => !answered.has(m.id)).length,
     result: resultView(room, result, members),
+    ...(room.inviteMode === 'group' && room.groupTokenEnc ? { groupToken: deps.tokens.decrypt(room.groupTokenEnc) } : {}),
   };
 }
 
 /** GET admin view: statuses only, never answer contents. */
 export async function getAdminView(deps: Deps, roomId: string, cred: Credential): Promise<AdminViewResponse> {
+  await ensureClosedIfDue(deps, roomId);
   return deps.uow.read(async (tx) => {
     const room = await tx.rooms.findById(roomId);
     if (!room) throw notFound();
@@ -79,10 +90,12 @@ export async function updateSettings(
   cred: Credential,
   input: UpdateSettingsRequest,
 ): Promise<AdminViewResponse> {
-  const patch = normalizeSettings(input, { requireTitle: false });
+  const { deadlineAt: rawDeadline, ...texts } = input;
+  const patch = normalizeSettings(texts, { requireTitle: false });
+  const deadlineAt = normalizeDeadline(rawDeadline, deps.clock.now());
   return deps.uow.withRoomLock(roomId, async (tx, room) => {
     await authorize(tx, deps.tokens, 'admin', room, cred);
-    const updated: Room = { ...room, ...patch };
+    const updated: Room = { ...room, ...patch, ...(deadlineAt !== undefined ? { deadlineAt } : {}) };
     await tx.rooms.update(updated);
     await tx.audit.append({
       roomId,
@@ -105,7 +118,7 @@ export async function addMember(
   const name = normalizeMemberName(input.name);
   return deps.uow.withRoomLock(roomId, async (tx, room) => {
     await authorize(tx, deps.tokens, 'admin', room, cred);
-    if (room.status !== 'open') throw roomClosed();
+    if (!acceptsChanges(room, deps.clock.now())) throw roomClosed();
 
     const members = await tx.members.listByRoom(roomId);
     if (members.length >= LIMITS.maxMembers) {
@@ -115,14 +128,15 @@ export async function addMember(
       throw validation({ name: '同じ名前のメンバーがいます' });
     }
 
-    const inviteToken = deps.tokens.generate();
+    // Group mode: no per-member invite URL; the member picks the name via the group URL.
+    const inviteToken = room.inviteMode === 'individual' ? deps.tokens.generate() : null;
     const now = deps.clock.now();
     const member: Member = {
       id: deps.ids.memberId(),
       roomId,
       displayName: name,
-      inviteTokenHash: deps.tokens.hash(inviteToken),
-      inviteTokenEnc: deps.tokens.encrypt(inviteToken),
+      inviteTokenHash: inviteToken ? deps.tokens.hash(inviteToken) : null,
+      inviteTokenEnc: inviteToken ? deps.tokens.encrypt(inviteToken) : null,
       inviteUsedAt: null,
       memberTokenHash: null,
       sortOrder: members.reduce((max, m) => Math.max(max, m.sortOrder), 0) + 1,
@@ -140,7 +154,7 @@ export async function removeMember(deps: Deps, roomId: string, cred: Credential,
     await authorize(tx, deps.tokens, 'admin', room, cred);
     const member = await tx.members.findInRoom(roomId, memberId);
     if (!member) throw notFound();
-    if (room.status !== 'open') throw roomClosed();
+    if (!acceptsChanges(room, deps.clock.now())) throw roomClosed();
     await tx.answers.delete(member.id);
     await tx.members.delete(roomId, member.id);
     await tx.audit.append({
@@ -153,7 +167,11 @@ export async function removeMember(deps: Deps, roomId: string, cred: Credential,
   });
 }
 
-/** F-05 / §5.6: new invite URL; old invite + member URL become invalid and the answer is deleted. */
+/**
+ * F-05 / §5.6: individual mode — new invite URL; old invite + member URL become invalid.
+ * group mode — "reset": the name can be picked again; the old member URL becomes invalid.
+ * Either way the answer is deleted.
+ */
 export async function reissueInvite(
   deps: Deps,
   roomId: string,
@@ -164,13 +182,13 @@ export async function reissueInvite(
     await authorize(tx, deps.tokens, 'admin', room, cred);
     const member = await tx.members.findInRoom(roomId, memberId);
     if (!member) throw notFound();
-    if (room.status !== 'open') throw roomClosed();
+    if (!acceptsChanges(room, deps.clock.now())) throw roomClosed();
 
-    const inviteToken = deps.tokens.generate();
+    const inviteToken = room.inviteMode === 'individual' ? deps.tokens.generate() : null;
     const updated: Member = {
       ...member,
-      inviteTokenHash: deps.tokens.hash(inviteToken),
-      inviteTokenEnc: deps.tokens.encrypt(inviteToken),
+      inviteTokenHash: inviteToken ? deps.tokens.hash(inviteToken) : null,
+      inviteTokenEnc: inviteToken ? deps.tokens.encrypt(inviteToken) : null,
       inviteUsedAt: null,
       memberTokenHash: null,
     };
@@ -192,25 +210,7 @@ export async function closeRoom(deps: Deps, roomId: string, cred: Credential): P
   return deps.uow.withRoomLock(roomId, async (tx, room) => {
     await authorize(tx, deps.tokens, 'admin', room, cred);
     if (room.status === 'closed') throw conflict('すでに締め切られています');
-
-    const members = await tx.members.listByRoom(roomId);
-    const answers = await tx.answers.listByRoom(roomId);
-    const map = new Map<string, SolverAnswer>(answers.map((a) => [a.memberId, a]));
-    const attending = solve(
-      members.map((m) => m.id),
-      map,
-    );
-
-    const now = deps.clock.now();
-    await tx.results.save({ roomId, attending: [...attending], computedAt: now });
-    const updated: Room = {
-      ...room,
-      status: 'closed',
-      closedAt: now,
-      purgeAfter: addDays(now, RETENTION_AFTER_CLOSE_DAYS),
-    };
-    await tx.rooms.update(updated);
-    await tx.audit.append({ roomId, memberId: null, actor: 'admin', action: 'room_closed', createdAt: now });
+    const updated = await closeInTx(deps, tx, room, 'admin');
     return buildAdminView(deps, tx, updated);
   });
 }
@@ -229,6 +229,8 @@ export async function reopenRoom(deps: Deps, roomId: string, cred: Credential): 
       ...room,
       status: 'open',
       purgeAfter: unclosedLimit > minimum ? unclosedLimit : minimum,
+      // A deadline already in the past would close the room again immediately.
+      deadlineAt: isPastDeadline(room, now) ? null : room.deadlineAt,
     };
     await tx.rooms.update(updated);
     await tx.audit.append({ roomId, memberId: null, actor: 'admin', action: 'room_reopened', createdAt: now });
@@ -239,4 +241,26 @@ export async function reopenRoom(deps: Deps, roomId: string, cred: Credential): 
 /** §7.5: delete rooms past their purge date. */
 export async function purgeExpiredRooms(deps: Deps): Promise<number> {
   return deps.uow.transaction((tx) => tx.rooms.deleteExpired(deps.clock.now()));
+}
+
+/** group mode: a new shared URL (e.g. it leaked). Members who already picked their name keep their URLs. */
+export async function reissueGroupToken(deps: Deps, roomId: string, cred: Credential): Promise<GroupTokenResponse> {
+  return deps.uow.withRoomLock(roomId, async (tx, room) => {
+    await authorize(tx, deps.tokens, 'admin', room, cred);
+    if (room.inviteMode !== 'group') throw notFound();
+    const groupToken = deps.tokens.generate();
+    await tx.rooms.update({
+      ...room,
+      groupTokenHash: deps.tokens.hash(groupToken),
+      groupTokenEnc: deps.tokens.encrypt(groupToken),
+    });
+    await tx.audit.append({
+      roomId,
+      memberId: null,
+      actor: 'admin',
+      action: 'group_token_reissued',
+      createdAt: deps.clock.now(),
+    });
+    return { groupToken };
+  });
 }

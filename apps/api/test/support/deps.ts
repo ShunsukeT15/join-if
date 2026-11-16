@@ -35,3 +35,4 @@ export function makeDeps(uow: UnitOfWork = new MemoryUnitOfWork()): TestDeps {
 export const admin = (token: string | undefined) => ({ kind: 'admin' as const, token });
 export const invite = (token: string | undefined) => ({ kind: 'invite' as const, token });
 export const member = (token: string | undefined) => ({ kind: 'member' as const, token });
+export const group = (token: string | undefined) => ({ kind: 'group' as const, token });

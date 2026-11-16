@@ -1,12 +1,14 @@
 import type { z } from 'zod';
 import type { CredentialKind } from '../../application/authorize.js';
 import * as A from '../../application/usecases/admin.js';
+import * as G from '../../application/usecases/group.js';
 import * as M from '../../application/usecases/member.js';
 import type { Credential } from '../../application/authorize.js';
 import type { Deps } from '../../application/deps.js';
 import {
   addMemberSchema,
   createRoomSchema,
+  groupClaimSchema,
   saveAnswerSchema,
   updateSettingsSchema,
 } from './schemas.js';
@@ -146,5 +148,30 @@ export const routes: RouteDef[] = [
     rate: [tokenCheck, saveRule],
     status: 200,
     handler: ({ deps, params, cred, body }) => M.saveAnswer(deps, params.roomId, cred, body),
+  }),
+  def({
+    method: 'POST',
+    path: '/api/rooms/:roomId/group/reissue',
+    auth: 'admin',
+    rate: [tokenCheck],
+    status: 200,
+    handler: ({ deps, params, cred }) => A.reissueGroupToken(deps, params.roomId, cred),
+  }),
+  def({
+    method: 'GET',
+    path: '/api/rooms/:roomId/group',
+    auth: 'group',
+    rate: [tokenCheck],
+    status: 200,
+    handler: ({ deps, params, cred }) => G.getGroupView(deps, params.roomId, cred),
+  }),
+  def({
+    method: 'POST',
+    path: '/api/rooms/:roomId/group/claim',
+    auth: 'group',
+    body: groupClaimSchema,
+    rate: [tokenCheck],
+    status: 200,
+    handler: ({ deps, params, cred, body }) => G.claimName(deps, params.roomId, cred, body),
   }),
 ];

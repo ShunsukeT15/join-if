@@ -2,6 +2,7 @@ import type { Deps } from './application/deps.js';
 import type { UnitOfWork } from './application/ports/persistence.js';
 import type { RateLimiter } from './application/ports/services.js';
 import { purgeExpiredRooms } from './application/usecases/admin.js';
+import { closeDueRooms } from './application/usecases/closing.js';
 import { generateEncryptionKey, NodeIdGenerator, NodeTokenService } from './infrastructure/crypto/nodeTokenService.js';
 import { MemoryUnitOfWork } from './infrastructure/persistence/memory/memoryUnitOfWork.js';
 import type { SqlPool } from './infrastructure/persistence/postgres/pgClient.js';
@@ -69,6 +70,8 @@ export interface Container {
   migrate: () => Promise<string[]>;
   /** Deletes expired rooms and stale rate-limit counters. */
   purge: () => Promise<{ rooms: number; rateLimits: number }>;
+  /** Closes open rooms whose automatic deadline has passed. */
+  closeDue: () => Promise<{ closed: number }>;
   close: () => Promise<void>;
 }
 
@@ -114,6 +117,9 @@ export async function buildContainer(config: Config): Promise<Container> {
     },
     async purge() {
       return { rooms: await purgeExpiredRooms(deps), rateLimits: await sweepRateLimits() };
+    },
+    async closeDue() {
+      return { closed: await closeDueRooms(deps) };
     },
     close: async () => {
       await pool?.end();

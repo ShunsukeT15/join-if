@@ -1,11 +1,13 @@
 import type { ClaimResponse, MemberViewResponse, SaveAnswerRequest } from '@himitsu/contracts';
 import { hasStaleCondition, validateAnswer } from '../../domain/answerRules.js';
 import { inviteUsed, notFound, roomClosed, validation } from '../../domain/errors.js';
+import { acceptsChanges } from '../../domain/roomRules.js';
 import type { Member, Room } from '../../domain/types.js';
 import { authorize, type Credential } from '../authorize.js';
 import type { Deps } from '../deps.js';
 import type { Tx } from '../ports/persistence.js';
 import { memberSummary, ownAnswer, resultView, roomInfo } from '../views.js';
+import { ensureClosedIfDue } from './closing.js';
 
 /**
  * F-06 / §8.2: exchange a one-time invite token for a member token.
@@ -14,6 +16,7 @@ import { memberSummary, ownAnswer, resultView, roomInfo } from '../views.js';
 export async function claimInvite(deps: Deps, roomId: string, cred: Credential): Promise<ClaimResponse> {
   return deps.uow.withRoomLock(roomId, async (tx, room) => {
     const { member } = await authorize(tx, deps.tokens, 'invite', room, cred);
+    if (room.inviteMode !== 'individual') throw notFound();
     if (member.inviteUsedAt !== null) throw inviteUsed();
 
     const memberToken = deps.tokens.generate();
@@ -50,6 +53,7 @@ async function buildMemberView(tx: Tx, room: Room, me: Member): Promise<MemberVi
 
 /** GET me: room info, statuses, and only the caller's own answer. */
 export async function getMemberView(deps: Deps, roomId: string, cred: Credential): Promise<MemberViewResponse> {
+  await ensureClosedIfDue(deps, roomId);
   return deps.uow.read(async (tx) => {
     const room = await tx.rooms.findById(roomId);
     if (!room) throw notFound();
@@ -67,7 +71,8 @@ export async function saveAnswer(
 ): Promise<MemberViewResponse> {
   return deps.uow.withRoomLock(roomId, async (tx, room) => {
     const { member } = await authorize(tx, deps.tokens, 'member', room, cred);
-    if (room.status !== 'open') throw roomClosed();
+    // Past the automatic deadline counts as closed even before the scheduled close runs.
+    if (!acceptsChanges(room, deps.clock.now())) throw roomClosed();
 
     const members = await tx.members.listByRoom(roomId);
     const checked = validateAnswer(input, { selfId: member.id, memberIds: members.map((m) => m.id) });

@@ -85,6 +85,7 @@ resource "aws_cloudfront_origin_request_policy" "api" {
         "X-Admin-Token",
         "X-Invite-Token",
         "X-Member-Token",
+        "X-Group-Token",
         "CloudFront-Viewer-Address",
       ]
     }

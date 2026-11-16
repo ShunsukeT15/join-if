@@ -128,6 +128,20 @@ describe('postgres schema constraints (defence in depth)', () => {
     }
   });
 
+  it('group-mode rooms must have a group token (and individual ones must not)', async () => {
+    await freshUow();
+    const insert = (id: string, mode: string, hash: string | null, enc: string | null) =>
+      exec(
+        `insert into rooms (id, title, status, admin_token_hash, created_at, purge_after, invite_mode, group_token_hash, group_token_enc)
+         values ($1, 't', 'open', $2, now(), now(), $3, $4, $5)`,
+        [id, `h-${id}`, mode, hash, enc],
+      );
+    await expect(insert('g1', 'group', null, null)).rejects.toThrow();
+    await expect(insert('g2', 'individual', 'x', 'y')).rejects.toThrow();
+    await expect(insert('g3', 'group', 'gh', 'ge')).resolves.toBeTruthy();
+    await expect(insert('g4', 'other', null, null)).rejects.toThrow();
+  });
+
   it('enables RLS on every table', async () => {
     await ready;
     const { rows } = await exec(

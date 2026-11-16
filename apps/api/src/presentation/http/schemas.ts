@@ -11,16 +11,26 @@ import { z } from 'zod';
 
 const text = (max: number) => z.string().max(max * 4);
 
+// ISO 8601; range (future, within a year) is checked in the domain.
+const deadlineAt = z.string().max(40).nullable().optional();
+
 export const createRoomSchema = z.strictObject({
   title: text(100),
   deadlineText: text(50).optional(),
   message: text(500).optional(),
+  inviteMode: z.enum(['individual', 'group']).optional(),
+  deadlineAt,
 });
 
 export const updateSettingsSchema = z.strictObject({
   title: text(100).optional(),
   deadlineText: text(50).optional(),
   message: text(500).optional(),
+  deadlineAt,
+});
+
+export const groupClaimSchema = z.strictObject({
+  memberId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
 });
 
 export const addMemberSchema = z.strictObject({

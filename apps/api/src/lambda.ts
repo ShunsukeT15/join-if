@@ -8,7 +8,7 @@ import { handle } from 'hono/aws-lambda';
 import { buildContainer, loadConfig, type Container } from './container.js';
 import { createApp } from './presentation/http/app.js';
 
-type Maintenance = { action: 'migrate' | 'purge' };
+type Maintenance = { action: 'migrate' | 'purge' | 'close-due' };
 
 const config = loadConfig();
 const containerPromise: Promise<Container> = buildContainer(config);
@@ -42,9 +42,14 @@ async function getHttpHandler() {
 
 export const handler = async (event: unknown, context: LambdaContext) => {
   const action = (event as Partial<Maintenance> | null)?.action;
-  if (action === 'migrate' || action === 'purge') {
+  if (action === 'migrate' || action === 'purge' || action === 'close-due') {
     const container = await containerPromise;
     if (action === 'migrate') return { applied: await container.migrate() };
+    if (action === 'close-due') {
+      const r = await container.closeDue();
+      if (r.closed > 0) console.log('[close-due]', JSON.stringify(r));
+      return r;
+    }
     const result = await container.purge();
     console.log('[purge]', JSON.stringify(result));
     return result;

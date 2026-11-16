@@ -37,7 +37,7 @@ const STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   internal: 500,
 };
 
-const HEADER_FOR = { admin: HEADERS.admin, invite: HEADERS.invite, member: HEADERS.member } as const;
+const HEADER_FOR = { admin: HEADERS.admin, invite: HEADERS.invite, member: HEADERS.member, group: HEADERS.group } as const;
 
 function errorBody(err: AppError): ErrorResponse {
   return { error: { code: err.code, message: err.message, ...(err.fields ? { fields: err.fields } : {}) } };
@@ -98,7 +98,7 @@ export function createApp(opts: AppOptions) {
     cors({
       origin: (origin) => (opts.corsOrigins.includes(origin) ? origin : null),
       allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-      allowHeaders: ['Content-Type', HEADERS.admin, HEADERS.invite, HEADERS.member],
+      allowHeaders: ['Content-Type', HEADERS.admin, HEADERS.invite, HEADERS.member, HEADERS.group],
       maxAge: 600,
     }),
   );

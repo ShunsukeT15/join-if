@@ -110,6 +110,26 @@ resource "aws_cloudwatch_event_target" "purge" {
   input = jsonencode({ action = "purge" })
 }
 
+# Automatic deadlines: close rooms whose deadline has passed (rooms are also closed lazily when opened).
+resource "aws_cloudwatch_event_rule" "close_due" {
+  name                = "${local.name}-close-due"
+  schedule_expression = "rate(5 minutes)"
+}
+
+resource "aws_cloudwatch_event_target" "close_due" {
+  rule  = aws_cloudwatch_event_rule.close_due.name
+  arn   = aws_lambda_function.api.arn
+  input = jsonencode({ action = "close-due" })
+}
+
+resource "aws_lambda_permission" "close_due" {
+  statement_id  = "AllowEventBridgeCloseDue"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.close_due.arn
+}
+
 resource "aws_lambda_permission" "purge" {
   statement_id  = "AllowEventBridgePurge"
   action        = "lambda:InvokeFunction"

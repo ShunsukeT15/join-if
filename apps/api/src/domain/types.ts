@@ -1,5 +1,6 @@
 export type RoomStatus = 'open' | 'closed';
 export type Choice = 'yes' | 'no' | 'cond';
+export type InviteMode = 'individual' | 'group';
 
 export interface Room {
   id: string;
@@ -7,7 +8,13 @@ export interface Room {
   deadlineText: string;
   message: string;
   status: RoomStatus;
+  inviteMode: InviteMode;
   adminTokenHash: string;
+  /** group mode: SHA-256 of the shared group token, and the token encrypted for re-display. */
+  groupTokenHash: string | null;
+  groupTokenEnc: string | null;
+  /** Automatic close time; answers are refused from this moment. */
+  deadlineAt: Date | null;
   createdAt: Date;
   closedAt: Date | null;
   purgeAfter: Date;
@@ -17,10 +24,14 @@ export interface Member {
   id: string;
   roomId: string;
   displayName: string;
-  /** SHA-256 of the current invite token. Kept after use so a second claim yields 410. */
-  inviteTokenHash: string;
+  /**
+   * individual mode: SHA-256 of the current invite token (kept after use so a second claim yields 410).
+   * group mode: null (members pick their name through the shared group URL).
+   */
+  inviteTokenHash: string | null;
   /** Encrypted invite token, only while unused (for re-display on the admin screen). */
   inviteTokenEnc: string | null;
+  /** When the invite URL was opened (individual) or the name was picked (group). */
   inviteUsedAt: Date | null;
   /** SHA-256 of the member token; null until claimed. The raw token is never stored. */
   memberTokenHash: string | null;
@@ -64,7 +75,8 @@ export type AuditAction =
   | 'answer_saved'
   | 'room_closed'
   | 'room_reopened'
-  | 'settings_changed';
+  | 'settings_changed'
+  | 'group_token_reissued';
 
 export interface AuditEvent {
   roomId: string;

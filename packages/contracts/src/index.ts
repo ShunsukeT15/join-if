@@ -5,6 +5,8 @@
 
 export type RoomStatus = 'open' | 'closed';
 export type Choice = 'yes' | 'no' | 'cond';
+/** individual: one-time invite URL per member / group: one shared URL, members pick their name. */
+export type InviteMode = 'individual' | 'group';
 
 export const LIMITS = {
   maxMembers: 100,
@@ -20,6 +22,7 @@ export const HEADERS = {
   admin: 'X-Admin-Token',
   invite: 'X-Invite-Token',
   member: 'X-Member-Token',
+  group: 'X-Group-Token',
 } as const;
 
 export interface RoomInfo {
@@ -27,6 +30,9 @@ export interface RoomInfo {
   deadlineText: string;
   message: string;
   status: RoomStatus;
+  inviteMode: InviteMode;
+  /** When set, answers stop at this time and the room closes automatically (ISO 8601). */
+  deadlineAt: string | null;
 }
 
 export interface ResultDto {
@@ -41,9 +47,18 @@ export interface MemberSummary {
 }
 
 export interface AdminMember extends MemberSummary {
-  /** Present only while the invite URL has not been used. */
+  /** individual mode only: present while the invite URL has not been used. */
   inviteToken?: string;
+  /** individual: invite URL opened / group: name already picked. */
   inviteUsed: boolean;
+}
+
+/** What a holder of the group URL sees before picking a name. */
+export interface GroupMember {
+  id: string;
+  name: string;
+  /** Already picked by someone; cannot be picked again until the organizer resets it. */
+  taken: boolean;
 }
 
 /**
@@ -78,12 +93,21 @@ export interface CreateRoomRequest {
   title: string;
   deadlineText?: string;
   message?: string;
+  inviteMode?: InviteMode;
+  /** ISO 8601, in the future. null / omitted = close manually. */
+  deadlineAt?: string | null;
 }
 
 export interface UpdateSettingsRequest {
   title?: string;
   deadlineText?: string;
   message?: string;
+  /** ISO 8601 in the future, or null to remove the automatic deadline. */
+  deadlineAt?: string | null;
+}
+
+export interface GroupClaimRequest {
+  memberId: string;
 }
 
 export interface AddMemberRequest {
@@ -108,6 +132,17 @@ export interface AdminViewResponse {
   members: AdminMember[];
   unansweredCount: number;
   result: ResultDto | null;
+  /** group mode only: the shared URL token. */
+  groupToken?: string;
+}
+
+export interface GroupViewResponse {
+  room: RoomInfo;
+  members: GroupMember[];
+}
+
+export interface GroupTokenResponse {
+  groupToken: string;
 }
 
 export interface AddMemberResponse {

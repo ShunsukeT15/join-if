@@ -3,7 +3,7 @@ import type { Member, Room } from '../domain/types.js';
 import type { Tx } from './ports/persistence.js';
 import type { TokenService } from './ports/services.js';
 
-export type CredentialKind = 'admin' | 'invite' | 'member';
+export type CredentialKind = 'admin' | 'invite' | 'member' | 'group';
 
 /** A token presented by a client, tagged with the header it came from. */
 export interface Credential {
@@ -25,12 +25,19 @@ export interface InviteAuth {
   room: Room;
   member: Member;
 }
+/** Holder of a group-mode room's shared URL (not yet a specific member). */
+export interface GroupAuth {
+  kind: 'group';
+  room: Room;
+}
 
 type AuthFor<K extends CredentialKind> = K extends 'admin'
   ? AdminAuth
   : K extends 'member'
     ? MemberAuth
-    : InviteAuth;
+    : K extends 'group'
+      ? GroupAuth
+      : InviteAuth;
 
 /**
  * The single authorization gate every use case passes through (spec §8.6).
@@ -60,6 +67,10 @@ export async function authorize<K extends CredentialKind>(
       const member = await tx.members.findByMemberTokenHash(hash);
       if (!member || member.roomId !== room.id) throw notFound();
       return { kind: 'member', room, member } as AuthFor<K>;
+    }
+    case 'group': {
+      if (room.inviteMode !== 'group' || room.groupTokenHash === null || hash !== room.groupTokenHash) throw notFound();
+      return { kind: 'group', room } as AuthFor<K>;
     }
     case 'invite': {
       const member = await tx.members.findByInviteTokenHash(hash);
