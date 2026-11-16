@@ -6,6 +6,8 @@ import type {
   CreateRoomResponse,
   ErrorCode,
   ErrorResponse,
+  GroupTokenResponse,
+  GroupViewResponse,
   MemberViewResponse,
   ReissueResponse,
   SaveAnswerRequest,
@@ -26,6 +28,9 @@ export interface ApiClient {
   claimInvite(roomId: string, inviteToken: string): Promise<ClaimResponse>;
   getMemberView(roomId: string, memberToken: string): Promise<MemberViewResponse>;
   saveAnswer(roomId: string, memberToken: string, req: SaveAnswerRequest): Promise<MemberViewResponse>;
+  getGroupView(roomId: string, groupToken: string): Promise<GroupViewResponse>;
+  claimName(roomId: string, groupToken: string, memberId: string): Promise<ClaimResponse>;
+  reissueGroupToken(roomId: string, adminToken: string): Promise<GroupTokenResponse>;
 }
 
 export class ApiError extends Error {
@@ -40,7 +45,7 @@ export class ApiError extends Error {
   }
 }
 
-type TokenHeader = { admin?: string; invite?: string; member?: string };
+type TokenHeader = { admin?: string; invite?: string; member?: string; group?: string };
 
 export class HttpApiClient implements ApiClient {
   constructor(private readonly baseUrl = '') {}
@@ -50,6 +55,7 @@ export class HttpApiClient implements ApiClient {
     if (tokens.admin) headers[HEADERS.admin] = tokens.admin;
     if (tokens.invite) headers[HEADERS.invite] = tokens.invite;
     if (tokens.member) headers[HEADERS.member] = tokens.member;
+    if (tokens.group) headers[HEADERS.group] = tokens.group;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     const payload = body === undefined ? undefined : JSON.stringify(body);
     // CloudFront signs requests to the Lambda origin (OAC); for requests with a body
@@ -121,6 +127,15 @@ export class HttpApiClient implements ApiClient {
   }
   saveAnswer(roomId: string, member: string, req: SaveAnswerRequest) {
     return this.request<MemberViewResponse>('PUT', `/api/rooms/${enc(roomId)}/me/answer`, { member }, req);
+  }
+  getGroupView(roomId: string, group: string) {
+    return this.request<GroupViewResponse>('GET', `/api/rooms/${enc(roomId)}/group`, { group });
+  }
+  claimName(roomId: string, group: string, memberId: string) {
+    return this.request<ClaimResponse>('POST', `/api/rooms/${enc(roomId)}/group/claim`, { group }, { memberId });
+  }
+  reissueGroupToken(roomId: string, admin: string) {
+    return this.request<GroupTokenResponse>('POST', `/api/rooms/${enc(roomId)}/group/reissue`, { admin });
   }
 }
 

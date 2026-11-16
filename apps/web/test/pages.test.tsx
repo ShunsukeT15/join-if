@@ -159,7 +159,7 @@ describe('MemberPage answer form', () => {
     const api = fakeApi({
       getMemberView: vi.fn().mockResolvedValue(
         memberView({
-          room: { title: '結婚式', deadlineText: '', message: '', status: 'closed' },
+          room: { title: '結婚式', deadlineText: '', message: '', status: 'closed', inviteMode: 'individual', deadlineAt: null },
           result: { attending: ['a'], computedAt: '2026-12-20T00:00:00Z' },
         }),
       ),
@@ -177,7 +177,7 @@ describe('TopPage', () => {
     const api = fakeApi({
       createRoom: vi.fn().mockResolvedValue({ roomId: 'r1', adminToken: 'AT' }),
       getAdminView: vi.fn().mockResolvedValue({
-        room: { title: '同窓会', deadlineText: '', message: '', status: 'open' },
+        room: { title: '同窓会', deadlineText: '', message: '', status: 'open', inviteMode: 'individual', deadlineAt: null },
         members: [],
         unansweredCount: 0,
         result: null,
@@ -188,5 +188,74 @@ describe('TopPage', () => {
     await user.click(screen.getByRole('button', { name: 'ルームを作成する' }));
     expect(await screen.findByText('この管理用URLを必ず保存してください')).toBeTruthy();
     expect(api.getAdminView).toHaveBeenCalledWith('r1', 'AT');
+    expect(api.createRoom).toHaveBeenCalledWith(expect.objectContaining({ title: '同窓会', inviteMode: 'individual', deadlineAt: null }));
+  });
+
+  it('can create a group-invitation room', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({
+      createRoom: vi.fn().mockResolvedValue({ roomId: 'r2', adminToken: 'AT' }),
+      getAdminView: vi.fn().mockResolvedValue({
+        room: { title: '旅行', deadlineText: '', message: '', status: 'open', inviteMode: 'group', deadlineAt: null },
+        members: [{ id: 'a', name: '鈴木', answered: false, inviteUsed: false }],
+        unansweredCount: 1,
+        result: null,
+        groupToken: 'GT',
+      }),
+    });
+    renderAt('/', api);
+    await user.type(screen.getByLabelText(/イベント名/), '旅行');
+    await user.click(screen.getByLabelText(/グループにまとめて招待/));
+    await user.click(screen.getByRole('button', { name: 'ルームを作成する' }));
+    expect(api.createRoom).toHaveBeenCalledWith(expect.objectContaining({ inviteMode: 'group' }));
+    expect(await screen.findByText('グループ用URL')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /リマインド文をコピー（未回答 1人）/ })).toBeTruthy();
+    expect(screen.getByText('名前 未選択')).toBeTruthy();
+  });
+});
+
+describe('GroupPage', () => {
+  const groupView = {
+    room: { title: '同窓会', deadlineText: '', message: '', status: 'open' as const, inviteMode: 'group' as const, deadlineAt: null },
+    members: [
+      { id: 'a', name: '佐藤', taken: true },
+      { id: 'b', name: '鈴木', taken: false },
+    ],
+  };
+
+  it('picks a free name after confirming and opens the member page', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({
+      getGroupView: vi.fn().mockResolvedValue(groupView),
+      claimName: vi.fn().mockResolvedValue({ memberToken: 'MTG' }),
+      getMemberView: vi.fn().mockResolvedValue(memberView()),
+    });
+    renderAt('/r/g1/g#GT', api);
+    expect(((await screen.findByRole('button', { name: /佐藤/ })) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole('button', { name: '鈴木' }));
+    expect(screen.getByText('あなたは「鈴木」さんですか？')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '鈴木さんとして回答する' }));
+    expect(api.claimName).toHaveBeenCalledWith('g1', 'GT', 'b');
+    expect(await screen.findByText('あなた専用の回答用URLを発行しました')).toBeTruthy();
+    expect(tokenStore.getMemberToken('g1')).toBe('MTG');
+  });
+
+  it('shows guidance when the name was taken meanwhile', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({
+      getGroupView: vi.fn().mockResolvedValue(groupView),
+      claimName: vi.fn().mockRejectedValue(new ApiError(410, 'invite_used', 'taken')),
+    });
+    renderAt('/r/g2/g#GT', api);
+    await user.click(await screen.findByRole('button', { name: '鈴木' }));
+    await user.click(screen.getByRole('button', { name: '鈴木さんとして回答する' }));
+    expect(await screen.findByText('「鈴木」はすでに選ばれています')).toBeTruthy();
+  });
+
+  it('offers the saved member page on a browser that already picked a name', async () => {
+    tokenStore.setMemberToken('g3', 'SAVED');
+    const api = fakeApi({ getGroupView: vi.fn().mockResolvedValue(groupView) });
+    renderAt('/r/g3/g#GT', api);
+    expect((await screen.findByRole('link', { name: '自分の回答画面を開く' })).getAttribute('href')).toBe('/r/g3/m#SAVED');
   });
 });

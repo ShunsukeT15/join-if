@@ -1,16 +1,33 @@
+import type { InviteMode } from '@himitsu/contracts';
 import { LIMITS } from '@himitsu/contracts';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useApi } from '../api/ApiProvider';
 import { ApiError } from '../api/client';
 import { Notice } from '../components/ui';
+import { fromLocalInput } from '../lib/format';
+
+const MODES: { value: InviteMode; title: string; body: string }[] = [
+  {
+    value: 'individual',
+    title: '一人ずつ招待',
+    body: 'メンバーごとに専用の招待URLを送ります。URLは1回だけ使え、なりすましに強い方式です。',
+  },
+  {
+    value: 'group',
+    title: 'グループにまとめて招待',
+    body: 'LINE グループなどに URL を1つ送るだけ。各自が名前を選んで回答します。リマインドも一括で送れます。',
+  },
+];
 
 export function TopPage() {
   const api = useApi();
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [deadlineText, setDeadlineText] = useState('');
+  const [deadlineLocal, setDeadlineLocal] = useState('');
   const [message, setMessage] = useState('');
+  const [inviteMode, setInviteMode] = useState<InviteMode>('individual');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -19,7 +36,13 @@ export function TopPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.createRoom({ title, deadlineText, message });
+      const res = await api.createRoom({
+        title,
+        deadlineText,
+        message,
+        inviteMode,
+        deadlineAt: fromLocalInput(deadlineLocal),
+      });
       navigate(`/r/${res.roomId}/admin#${res.adminToken}`, { state: { justCreated: true } });
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, 'internal', '作成できませんでした'));
@@ -45,7 +68,7 @@ export function TopPage() {
         </li>
         <li className="step">
           <span className="step__num">2</span>
-          <b>招待URLを送る</b>一人ずつ専用のURLをLINEなどで
+          <b>URLを送る</b>一人ずつでも、グループにまとめてでも
         </li>
         <li className="step">
           <span className="step__num">3</span>
@@ -70,16 +93,52 @@ export function TopPage() {
           />
           {error?.fields.title && <span className="field__error">{error.fields.title}</span>}
         </div>
+
+        <fieldset className="field mode-field">
+          <legend className="field__label">招待のしかた</legend>
+          <div className="mode-options">
+            {MODES.map((m) => (
+              <label key={m.value} className="mode-option" data-selected={inviteMode === m.value}>
+                <input
+                  type="radio"
+                  name="inviteMode"
+                  value={m.value}
+                  checked={inviteMode === m.value}
+                  onChange={() => setInviteMode(m.value)}
+                />
+                <span className="mode-option__title">{m.title}</span>
+                <span className="mode-option__body">{m.body}</span>
+              </label>
+            ))}
+          </div>
+          <span className="field__hint">あとから変更はできません。</span>
+        </fieldset>
+
+        <div className="field">
+          <label className="field__label" htmlFor="deadlineAt">
+            自動で締め切る日時 <span className="field__hint">任意</span>
+          </label>
+          <input
+            id="deadlineAt"
+            type="datetime-local"
+            className={`input${error?.fields.deadlineAt ? ' input--error' : ''}`}
+            value={deadlineLocal}
+            onChange={(e) => setDeadlineLocal(e.target.value)}
+          />
+          <span className="field__hint">この日時になると回答を締め切り、自動で結果を出します。空欄なら手動で締め切ります。</span>
+          {error?.fields.deadlineAt && <span className="field__error">{error.fields.deadlineAt}</span>}
+        </div>
+
         <div className="field">
           <label className="field__label" htmlFor="deadline">
-            回答締切 <span className="field__hint">任意・表示のみ</span>
+            締切のメモ <span className="field__hint">任意・表示のみ</span>
           </label>
           <input
             id="deadline"
             className="input"
             value={deadlineText}
             onChange={(e) => setDeadlineText(e.target.value)}
-            placeholder="例：12月20日まで"
+            placeholder="例：12月20日ごろまで"
             maxLength={LIMITS.deadlineTextMax}
           />
           {error?.fields.deadlineText && <span className="field__error">{error.fields.deadlineText}</span>}
@@ -113,7 +172,7 @@ export function TopPage() {
         <ul className="feature-list">
           <li>個別の回答内容は、招待した人にも他のメンバーにも表示されません。</li>
           <li>「行かない」と「条件が合わず不参加」は、どの画面でも区別されません。</li>
-          <li>招待URLは1回だけ使えます。開いた本人にだけ、招待した人も知らない回答用URLが発行されます。</li>
+          <li>回答する人には、招待した人も知らない本人専用の回答用URLが発行されます。</li>
           <li>結婚式のほか、同窓会や旅行など、グループの集まり全般に使えます。</li>
         </ul>
       </section>

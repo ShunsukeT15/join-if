@@ -1,7 +1,7 @@
 import type { MemberSummary, ResultDto, RoomInfo } from '@himitsu/contracts';
 import { Link } from 'react-router';
 import { ApiError } from '../api/client';
-import { formatDateTime } from '../lib/format';
+import { deadlineLabel, formatDateTime } from '../lib/format';
 import { Notice } from './ui';
 
 export function EventHeader({ room }: { room: RoomInfo }) {
@@ -15,7 +15,8 @@ export function EventHeader({ room }: { room: RoomInfo }) {
         )}
       </div>
       <h1 className="page-title">{room.title}</h1>
-      {room.deadlineText && <div className="event-meta">回答締切：{room.deadlineText}</div>}
+      {deadlineLabel(room) && <div className="event-meta">回答締切：{deadlineLabel(room)}</div>}
+      {room.deadlineAt && room.deadlineText && <div className="event-meta">{room.deadlineText}</div>}
       {room.message && <p className="message">{room.message}</p>}
     </section>
   );
