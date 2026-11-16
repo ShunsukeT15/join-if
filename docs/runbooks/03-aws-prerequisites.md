@@ -18,7 +18,7 @@ npm run doctor                                        # 足りないものと直
 npm run setup:aws -- --budget-email you@example.com   # コスト配分タグの有効化 + 予算アラートの通知先（初回のみ）
 ```
 
-`setup:aws` は AWS アカウントの設定（コスト配分タグ）を変更します。メールアドレスは `terraform.tfvars`（Git 管理外）に書き込まれ、次の `npm run release` で予算アラートが作成されます。**AWS から届く購読確認メールの承認だけは手作業**です。
+`setup:aws` は AWS アカウントの設定（コスト配分タグ）を変更します。メールアドレスは `terraform.tfvars`（Git 管理外）に書き込まれ、次の `npm run release` で予算アラートが作成されます（`terraform apply` だけでも可）。AWS Budgets のメール通知は購読確認なしで届きます。
 
 以下は個別に行う場合の手順です。
 
@@ -57,14 +57,15 @@ cp example.tfvars terraform.tfvars   # Git には入りません
 
 | 変数 | 既定値 | 説明 |
 | --- | --- | --- |
-| `budget_alert_email` | `""` | 設定すると月額予算アラート（80%超過の予測でメール）を作成 |
+| `budget_alert_email` | `""` | 設定すると月額予算アラート（予測・実績が閾値を超えたらメール）を作成 |
 | `monthly_budget_usd` | `40` | 予算額 |
+| `budget_alert_threshold_percent` | `100` | 予測・実績が予算のこの割合を超えたらメール通知 |
 | `db_deletion_protection` | `true` | RDS の削除保護。環境を消すときだけ `false` |
 | `env` | `prod` | リソース名に入る環境名。別環境を作るなら変更（state も分ける） |
 
 その他は [env-reference.md](./env-reference.md#terraform-の変数)。
 
-予算アラートを設定すると、AWS から購読確認メールが届くので承認してください。
+予算アラートのメール通知は、SNS と違い購読確認は不要です。通知が届かない場合は迷惑メールフォルダを確認してください。
 
 ## 4. コスト配分タグの有効化（推奨）
 

@@ -6,16 +6,27 @@ resource "aws_budgets_budget" "monthly" {
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
 
+  # Only this project's resources (requires the cost allocation tag "Project" to be active).
   cost_filter {
     name   = "TagKeyValue"
     values = ["user:Project$himitsu-shukketsu"]
   }
 
+  # The month is forecast to exceed the threshold.
   notification {
     comparison_operator        = "GREATER_THAN"
-    threshold                  = 80
+    threshold                  = var.budget_alert_threshold_percent
     threshold_type             = "PERCENTAGE"
     notification_type          = "FORECASTED"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+
+  # Actual spend has exceeded the threshold.
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = var.budget_alert_threshold_percent
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
     subscriber_email_addresses = [var.budget_alert_email]
   }
 }

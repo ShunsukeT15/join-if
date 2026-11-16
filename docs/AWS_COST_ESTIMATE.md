@@ -66,5 +66,5 @@
 
 ## 費用の監視
 
-`terraform.tfvars` に `budget_alert_email` を設定すると、月額予算（既定 40 USD）の80%超過予測でメール通知する AWS Budgets を作成します。
+`npm run setup:aws -- --budget-email <アドレス> --budget-usd <金額>` で、月額予算の**予測または実績が予算額を超えたとき**にメール通知する AWS Budgets を作成します（現在の設定: 15 USD）。
 コスト配分タグ `Project` を Billing コンソールで有効化すると、このプロジェクト分だけを絞り込めます。

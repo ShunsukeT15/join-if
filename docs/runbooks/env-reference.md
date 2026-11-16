@@ -46,6 +46,7 @@ AWS では Lambda の環境変数を Terraform（`infra/terraform/api.tf`）が�
 | `log_retention_days` | `14` | ログの保持日数 |
 | `budget_alert_email` | `""` | 予算アラートの通知先（空なら作らない） |
 | `monthly_budget_usd` | `40` | 月額予算 |
+| `budget_alert_threshold_percent` | `100` | 予測・実績が予算のこの割合を超えたら通知 |
 
 ## Terraform の出力
 

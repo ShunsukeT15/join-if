@@ -3,14 +3,17 @@
 #
 #   npm run setup:aws                                  # コスト配分タグ Project を有効化
 #   npm run setup:aws -- --budget-email you@example.com  # 予算アラートの通知先も設定（次の release で作成）
+#   npm run setup:aws -- --budget-email you@example.com --budget-usd 15  # 予算額も指定
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TFVARS="${ROOT}/infra/terraform/terraform.tfvars"
 EMAIL=""
+BUDGET=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --budget-email) EMAIL="${2:-}"; shift 2 ;;
+    --budget-usd) BUDGET="${2:-}"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -30,9 +33,10 @@ fi
 if [ -n "${EMAIL}" ]; then
   echo "==> 予算アラートの通知先を terraform.tfvars に設定"
   touch "${TFVARS}"
-  grep -v '^budget_alert_email' "${TFVARS}" > "${TFVARS}.tmp" || true
+  grep -vE '^(budget_alert_email|monthly_budget_usd)' "${TFVARS}" > "${TFVARS}.tmp" || true
   printf 'budget_alert_email = "%s"\n' "${EMAIL}" >> "${TFVARS}.tmp"
+  [ -n "${BUDGET}" ] && printf 'monthly_budget_usd = %s\n' "${BUDGET}" >> "${TFVARS}.tmp"
   mv "${TFVARS}.tmp" "${TFVARS}"
   echo "設定しました。次の npm run release で予算アラートが作成されます。"
-  echo "作成後に AWS から届く購読確認メールを承認してください。"
+  echo "通知は購読確認なしで届きます（迷惑メールフォルダも確認してください）。"
 fi

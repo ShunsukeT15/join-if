@@ -72,3 +72,9 @@ variable "monthly_budget_usd" {
   type    = number
   default = 40
 }
+
+variable "budget_alert_threshold_percent" {
+  description = "Notify when forecast / actual spend exceeds this percentage of the budget"
+  type        = number
+  default     = 100
+}

@@ -76,6 +76,7 @@
 - ⏸ Playwright によるブラウザ E2E（CI にブラウザ環境を用意してから）
 - ⏸ 実機確認（iPhone Safari / Android Chrome / LINE 内ブラウザ）
 - ✅ AWS へ実デプロイ（CloudFront + S3 + Lambda + RDS、Terraform）
+- ✅ 予算アラート（15 USD、予測・実績が超えたらメール）とコスト配分タグ Project の有効化
 - ⏸ エラー監視・CloudWatch アラーム、独自ドメイン、Terraform state の S3 化
 
 ## 作業ログ
@@ -95,3 +96,4 @@
 | 2026-11-16 | OR 対応を AWS にデプロイ（マイグレーション003適用、スモークテスト全通過）。デプロイ時に aws コマンドのリンク切れで途中停止→再実行で復旧。再発防止にデプロイ前の事前チェックを追加 |
 | 2026-11-16 | エージェント向けルール AGENTS.md（共通）と CLAUDE.md（Claude 固有）を追加 |
 | 2026-11-16 | デプロイ手順を集約: npm run doctor（点検・アカウント取り違え検知）/ release（テスト→デプロイ→スモークテスト、--plan で確認のみ）/ setup:aws（初回のアカウント設定） |
+| 2026-11-16 | 初回のアカウント設定を実施: コスト配分タグ Project を有効化、予算アラート himitsu-prod-monthly（15 USD、予測・実績 100% で通知）を作成 |
