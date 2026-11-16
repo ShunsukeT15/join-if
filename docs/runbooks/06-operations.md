@@ -29,6 +29,7 @@ aws lambda get-function --function-name himitsu-prod-api \
 | 処理 | タイミング | 手動実行 |
 | --- | --- | --- |
 | 期限切れルームの削除（締切90日後 / 未締切1年後）と回数制限カウンタの掃除 | 毎日 03:17 JST（EventBridge） | 下記 |
+| 自動締め切り（締切日時を過ぎたルームを締め切って集計） | 5分ごと（EventBridge）。画面を開いたときにも実行 | `aws lambda invoke --function-name himitsu-prod-api --cli-binary-format raw-in-base64-out --payload '{"action":"close-due"}' /dev/stdout` |
 | RDS の自動バックアップ（7日保持） | 毎日 03:00〜03:30 JST | — |
 | RDS のマイナーバージョン更新 | 日曜 04:00〜04:30 JST | — |
 

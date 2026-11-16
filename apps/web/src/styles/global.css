@@ -56,6 +56,16 @@ textarea {
   color: inherit;
 }
 
+/* Phones: no grey tap flash, no double-tap zoom delay on controls. */
+a,
+button,
+label,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 /* ---------- Layout ---------- */
 
 .app-header {
@@ -345,6 +355,11 @@ textarea {
   transition: border-color 0.15s, background 0.15s;
 }
 
+.choice > span {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
 .choice__icon {
   font-size: 22px;
   line-height: 1;
@@ -368,6 +383,7 @@ textarea {
 }
 
 .cond-section__head {
+  word-break: keep-all;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1025,4 +1041,139 @@ textarea {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* ---------- Answer form status & submit ---------- */
+
+.my-status {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  gap: 2px;
+}
+
+.submit-bar {
+  margin-top: 16px;
+}
+
+.btn-row--stack .btn {
+  flex: 1 1 auto;
+}
+
+input[type='datetime-local'].input {
+  display: block;
+  min-height: 46px;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: left;
+}
+
+/* ---------- Phones ---------- */
+
+@media (max-width: 600px) {
+  /* Keep the save button reachable while editing a long conditional answer. */
+  .submit-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 16px -16px 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--surface) 35%);
+  }
+  .toast {
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 15px;
+  }
+  .container {
+    padding: 14px 12px 40px;
+    gap: 12px;
+  }
+  .card {
+    padding: 16px;
+    border-radius: 12px;
+  }
+  .hero {
+    padding: 8px 0 0;
+  }
+  .hero h1 {
+    font-size: 21px;
+  }
+  .hero p {
+    font-size: 13px;
+  }
+  .page-title {
+    font-size: 20px;
+  }
+
+  /* Steps as one compact row so the form starts higher. */
+  .steps {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .step {
+    padding: 8px 6px;
+    text-align: center;
+  }
+  .step b {
+    font-size: 12px;
+    margin: 0;
+  }
+  .step__num {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  .step__desc {
+    display: none;
+  }
+
+  /* Touch targets ≥ 40px. */
+  .btn--sm,
+  .btn--ghost {
+    min-height: 40px;
+  }
+  .chip {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+
+  .btn-row--stack {
+    flex-direction: column;
+  }
+  .btn-row--stack .btn {
+    width: 100%;
+  }
+
+  .cond-box {
+    padding: 10px;
+    margin-left: -4px;
+    margin-right: -4px;
+  }
+  .pattern {
+    padding: 10px 12px 12px;
+  }
+  .choice {
+    padding: 12px 4px;
+    font-size: 13.5px;
+  }
+  .member-admin__bottom {
+    row-gap: 4px;
+  }
+  .dialog-backdrop {
+    padding: 0;
+  }
+  .dialog {
+    border-radius: 18px 18px 0 0;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    margin-bottom: 0;
+  }
+  .dialog__actions {
+    flex-direction: column-reverse;
+  }
 }

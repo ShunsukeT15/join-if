@@ -64,15 +64,18 @@ export function TopPage() {
       <ol className="steps">
         <li className="step">
           <span className="step__num">1</span>
-          <b>ルームを作る</b>アカウント登録は不要です
+          <b>ルームを作る</b>
+          <span className="step__desc">アカウント登録は不要です</span>
         </li>
         <li className="step">
           <span className="step__num">2</span>
-          <b>URLを送る</b>一人ずつでも、グループにまとめてでも
+          <b>URLを送る</b>
+          <span className="step__desc">一人ずつでも、グループにまとめてでも</span>
         </li>
         <li className="step">
           <span className="step__num">3</span>
-          <b>締め切って結果</b>参加・不参加だけが表示されます
+          <b>締め切って結果</b>
+          <span className="step__desc">参加・不参加だけが表示されます</span>
         </li>
       </ol>
 

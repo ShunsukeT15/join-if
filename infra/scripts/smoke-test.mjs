@@ -92,6 +92,24 @@ check('save after close → 409', (await req('PUT', `/api/rooms/${roomId}/me/ans
 check('wrong admin token → 404', (await req('GET', `/api/rooms/${roomId}/admin`, undefined, { 'X-Admin-Token': 'wrong' })).status === 404);
 check('unknown field → 422', (await req('PUT', `/api/rooms/${roomId}/me/answer`, { choice: 'yes', memberId: 'x' }, { 'X-Member-Token': tokens.B })).status === 422);
 
+// ---- Group invitation: one shared URL, each name can be picked once ----
+const g = await req('POST', '/api/rooms', { title: `[smoke] group ${new Date().toISOString()}`, inviteMode: 'group' });
+check('create group room → 201', g.status === 201);
+const gAdmin = { 'X-Admin-Token': g.json.adminToken };
+const gRoom = g.json.roomId;
+const gName = await req('POST', `/api/rooms/${gRoom}/members`, { name: 'G1' }, gAdmin);
+const gView = await req('GET', `/api/rooms/${gRoom}/admin`, undefined, gAdmin);
+const groupToken = gView.json.groupToken;
+check('admin view has the group URL token', typeof groupToken === 'string' && groupToken.length > 20);
+const gList = await req('GET', `/api/rooms/${gRoom}/group`, undefined, { 'X-Group-Token': groupToken });
+check('group view lists names (no answers)', gList.status === 200 && gList.json.members.length === 1 && !JSON.stringify(gList.json).includes('answered'));
+const gPick = await req('POST', `/api/rooms/${gRoom}/group/claim`, { memberId: gName.json.member.id }, { 'X-Group-Token': groupToken });
+check('pick a name → 200', gPick.status === 200);
+check('pick the same name again → 410', (await req('POST', `/api/rooms/${gRoom}/group/claim`, { memberId: gName.json.member.id }, { 'X-Group-Token': groupToken })).status === 410);
+check('answer as the picked name → 200', (await req('PUT', `/api/rooms/${gRoom}/me/answer`, { choice: 'yes' }, { 'X-Member-Token': gPick.json.memberToken })).status === 200);
+const gClosed = await req('POST', `/api/rooms/${gRoom}/close`, undefined, gAdmin);
+check('close group room → attends', gClosed.status === 200 && gClosed.json.result?.attending?.length === 1);
+
 const spa = await fetch(`${BASE}/r/${roomId}/m`);
 const html = await spa.text();
 if (html.toLowerCase().includes('<!doctype html')) {

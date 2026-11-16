@@ -61,8 +61,10 @@ export function MemberPage() {
       )}
 
       <section className="card">
-        <h2 className="card__title">あなたの回答</h2>
-        <MyStatus me={data.me} />
+        <h2 className="card__title">
+          あなたの回答
+          {data.me.answer ? <span className="pill pill--done">回答済み</span> : <span className="pill pill--todo">未回答</span>}
+        </h2>
         {isOpen ? (
           <AnswerForm
             key={data.me.answer?.updatedAt ?? 'new'}
@@ -77,6 +79,7 @@ export function MemberPage() {
             <Notice tone="info">受付は終了しました。回答は変更できません。</Notice>
           </>
         )}
+        <MyStatus me={data.me} />
       </section>
 
       <section className="card">
@@ -102,7 +105,7 @@ export function MemberPage() {
 
 function MyStatus({ me }: { me: MemberViewResponse['me'] }) {
   return (
-    <div className="stack small muted" style={{ marginBottom: 14, gap: 2 }}>
+    <div className="stack small muted my-status">
       {me.answer ? (
         <span>
           <strong style={{ color: 'var(--primary-hover)' }}>回答済み</strong>（最終更新：{formatDateTime(me.answer.updatedAt)}、保存 {me.saveCount} 回）
@@ -267,7 +270,15 @@ function AnswerForm({
             <span className="choice__icon" aria-hidden>
               {c.icon}
             </span>
-            {c.label}
+            {c.value === 'cond' ? (
+              <span>
+                条件付きで
+                <wbr />
+                行く
+              </span>
+            ) : (
+              c.label
+            )}
           </button>
         ))}
       </div>
@@ -343,7 +354,7 @@ function AnswerForm({
                       checked={p.useTotal}
                       onChange={(e) => update(p.key, (x) => ({ ...x, useTotal: e.target.checked }))}
                     />
-                    {p.people.length > 0 ? 'さらに、参加者が一定数以上なら' : '参加者が一定数以上なら'}
+                    {p.people.length > 0 ? 'さらに参加人数の条件も付ける' : '参加人数で決める'}
                   </label>
                   {p.useTotal && (
                     <div className="sentence">
@@ -408,9 +419,11 @@ function AnswerForm({
         </div>
       )}
 
-      <button type="submit" className="btn btn--primary btn--block" style={{ marginTop: 16 }} disabled={!valid || busy}>
-        {busy ? '保存中…' : answer ? '回答を更新する' : '回答を保存する'}
-      </button>
+      <div className="submit-bar">
+        <button type="submit" className="btn btn--primary btn--block" disabled={!valid || busy}>
+          {busy ? '保存中…' : answer ? '回答を更新する' : '回答を保存する'}
+        </button>
+      </div>
 
       <ul className="privacy-note">
         <li>回答内容は、招待した人を含め誰にも表示されません。</li>

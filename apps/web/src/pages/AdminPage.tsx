@@ -522,7 +522,7 @@ function GroupInviteCard({
         LINE グループなどに、このURLを1つ送るだけで全員が回答できます。各自が自分の名前を選んで回答します（名前は先着1回）。
       </p>
       <UrlBox url={url} />
-      <div className="btn-row">
+      <div className="btn-row btn-row--stack">
         <CopyButton text={groupMessage({ title, deadline, url })} label="案内文をコピー" variant="primary" done="案内文をコピーしました" />
         {isOpen && unanswered.length > 0 && (
           <CopyButton
