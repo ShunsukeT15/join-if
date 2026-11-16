@@ -43,14 +43,6 @@ rm -f "${RESULT_FILE}"
 echo "==> Building web"
 VITE_API_BASE_URL="" npm run build -w @himitsu/web --prefix "${ROOT}" >/dev/null
 
-echo "==> Uploading web to s3://${BUCKET}"
-WEB="${ROOT}/apps/web/dist"
-aws s3 sync "${WEB}/assets" "s3://${BUCKET}/assets" --delete \
-  --cache-control "public, max-age=31536000, immutable" >/dev/null
-aws s3 sync "${WEB}" "s3://${BUCKET}" --delete --exclude "assets/*" \
-  --cache-control "no-cache" >/dev/null
-
-echo "==> Invalidating CloudFront"
-aws cloudfront create-invalidation --distribution-id "${DIST}" --paths "/index.html" "/" >/dev/null
+"${ROOT}/infra/scripts/upload-web.sh" "${BUCKET}" "${DIST}"
 
 echo "==> Done: ${URL}"

@@ -92,6 +92,8 @@ packages/contracts API の型（web と api で共有）。ランタイム依存
 - `terraform apply` の前に `plan` を確認し、**既存リソースの変更・削除が意図どおりか**を見る。同じアカウントに他プロジェクトのリソースがある。
 - Terraform state（`infra/terraform/terraform.tfstate`）には秘密情報が平文で入る。Git に入れない・外部に送らない。
 - 本番へのデプロイ・リソースの作成削除・費用が発生する操作は、**ユーザーの明示的な指示があるときだけ**行う。
+- 画面は `main` への push で GitHub Actions が自動デプロイする（`.github/workflows/deploy-web.yml`）。API・DB・インフラは自動デプロイされないので `npm run release` を使う。
+- **API の型（`packages/contracts`）を変える変更は、API を先にデプロイしてから `main` にマージする。**
 - デプロイは `npm run release` を使う（点検・テスト・スモークテスト込み）。指示がないときは `npm run release -- --plan` までにとどめる。
 - シェルスクリプトでは変数を `${VAR}` と書く（macOS 標準の bash 3.2 は `$VAR（` のように直後の全角文字を変数名と誤読する）。
 - 本番データは障害対応以外で見ない（仕様 9.1）。動作確認は新しいテスト用ルームで行う。

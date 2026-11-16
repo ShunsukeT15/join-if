@@ -1,0 +1,86 @@
+name: Deploy web
+
+# Frontend CD: on every push/merge to main that touches the frontend, test, build,
+# upload to S3 and invalidate CloudFront. The API / infrastructure are deployed
+# separately with `npm run release` (see docs/runbooks/04-aws-deploy.md).
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/web/**
+      - packages/contracts/**
+      - package.json
+      - package-lock.json
+      - infra/scripts/upload-web.sh
+      - .github/workflows/deploy-web.yml
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits instead of racing.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Values from `terraform -chdir=infra/terraform output` (not secrets).
+  AWS_REGION: ap-northeast-1
+  AWS_ROLE_ARN: arn:aws:iam::743337585148:role/himitsu-prod-github-web-deploy
+  WEB_BUCKET: himitsu-prod-web-743337585148
+  CLOUDFRONT_DISTRIBUTION_ID: E2TSVEMV6DSPA4
+  SITE_URL: https://d19vqsq3pf9lsr.cloudfront.net
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # OIDC: short-lived AWS credentials, no stored keys
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: |
+          npm run typecheck -w @himitsu/contracts
+          npm run typecheck -w @himitsu/web
+
+      - name: Test
+        run: npm test -w @himitsu/web
+
+      - name: Build
+        run: npm run build -w @himitsu/web
+        env:
+          VITE_API_BASE_URL: "" # same origin via CloudFront
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload to S3 and invalidate CloudFront
+        run: infra/scripts/upload-web.sh "$WEB_BUCKET" "$CLOUDFRONT_DISTRIBUTION_ID"
+
+      - name: Check the site serves the new build
+        run: |
+          sleep 20
+          url="$SITE_URL"
+          expected="$(grep -o 'assets/index-[^"]*\.js' apps/web/dist/index.html | head -1)"
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "$url/" | grep -q "$expected"; then
+              echo "OK: $url serves $expected"
+              echo "Deployed: $url" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::$url does not serve $expected yet"
+          exit 1

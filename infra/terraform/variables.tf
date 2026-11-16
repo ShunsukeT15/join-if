@@ -78,3 +78,20 @@ variable "budget_alert_threshold_percent" {
   type        = number
   default     = 100
 }
+
+variable "github_repository" {
+  description = "owner/name of the GitHub repository allowed to deploy the frontend"
+  type        = string
+  default     = "ShunsukeT15/join-if"
+}
+
+variable "github_deploy_branch" {
+  type    = string
+  default = "main"
+}
+
+variable "create_github_oidc_provider" {
+  description = "false if the account already has the GitHub OIDC provider (created by another project)"
+  type        = bool
+  default     = true
+}

@@ -35,6 +35,24 @@ EventBridge（毎日 03:17 JST）→ Lambda { action: "purge" }（期限切れ�
 
 通常は **`npm run release` の1コマンド** で足ります。
 
+## 画面の自動デプロイ（GitHub Actions）
+
+`main` ブランチに push / マージされ、画面に関係するファイルが変わると、`.github/workflows/deploy-web.yml` が自動で画面をデプロイします。
+
+| 項目 | 内容 |
+| --- | --- |
+| きっかけ | `main` への push で、`apps/web/**`・`packages/contracts/**`・`package.json`・`package-lock.json`・`infra/scripts/upload-web.sh`・ワークフロー自身のいずれかが変わったとき。Actions 画面から手動実行（workflow_dispatch）も可 |
+| 流れ | 型チェック → 画面のテスト → ビルド → S3 にアップロード → CloudFront のキャッシュ削除 → 新しいビルドが配信されているか確認 |
+| AWS の認証 | OIDC（GitHub にアクセスキーを保存しない）。IAM ロール `himitsu-prod-github-web-deploy` を、このリポジトリの `main` ブランチのワークフローだけが引き受けられる |
+| 権限 | 画面のバケットへの読み書きと、このディストリビューションのキャッシュ削除だけ。Lambda・RDS・IAM は操作できない |
+| 同時実行 | 1件ずつ（新しい push は前のデプロイの完了を待つ） |
+
+**API・DB・インフラは自動デプロイしません。** これらを変えたときは従来どおり `npm run release` を実行します。
+
+> **API の型（`packages/contracts`）を変える変更は、先に `npm run release` で API をデプロイしてから `main` にマージしてください。** 画面だけ先に新しくなると、古い API と食い違って保存などが失敗します。
+
+ワークフローに書いている値（ロール ARN・バケット名・ディストリビューション ID・URL）は Terraform の出力です。環境を作り直したときは `terraform -chdir=infra/terraform output` で確認して書き換えます。
+
 ## 初回デプロイ
 
 前提: [03-aws-prerequisites.md](./03-aws-prerequisites.md) が完了していること。所要時間は 20〜35 分（RDS の作成が大半）。

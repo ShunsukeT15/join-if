@@ -46,6 +46,9 @@ AWS では Lambda の環境変数を Terraform（`infra/terraform/api.tf`）が�
 | `log_retention_days` | `14` | ログの保持日数 |
 | `budget_alert_email` | `""` | 予算アラートの通知先（空なら作らない） |
 | `monthly_budget_usd` | `40` | 月額予算 |
+| `github_repository` | `ShunsukeT15/join-if` | 画面の自動デプロイを許可する GitHub リポジトリ |
+| `github_deploy_branch` | `main` | 自動デプロイを許可するブランチ |
+| `create_github_oidc_provider` | `true` | アカウントに GitHub の OIDC プロバイダーがすでにある場合は `false` |
 | `budget_alert_threshold_percent` | `100` | 予測・実績が予算のこの割合を超えたら通知 |
 
 ## Terraform の出力
@@ -61,3 +64,4 @@ terraform -chdir=infra/terraform output
 | `web_bucket` | 画面ファイルの S3 バケット |
 | `api_function_name` | Lambda 関数名 |
 | `db_endpoint` | RDS のエンドポイント（VPC 内からのみ到達可能） |
+| `github_web_deploy_role_arn` | GitHub Actions が引き受ける IAM ロール |

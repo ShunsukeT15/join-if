@@ -17,3 +17,8 @@ output "api_function_name" {
 output "db_endpoint" {
   value = aws_db_instance.main.address
 }
+
+output "github_web_deploy_role_arn" {
+  description = "Role assumed by .github/workflows/deploy-web.yml"
+  value       = aws_iam_role.github_web_deploy.arn
+}
