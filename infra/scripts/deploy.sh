@@ -9,6 +9,20 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TF="$ROOT/infra/terraform"
 APPROVE="${1:-}"
 
+# Preflight: fail before changing anything, so a deploy never stops halfway
+# (e.g. new Lambda code live but migrations not yet applied).
+for cmd in node npm terraform aws; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "error: '$cmd' not found in PATH. See docs/runbooks/03-aws-prerequisites.md" >&2
+    [ "$cmd" = aws ] && echo "hint: if installed with Homebrew, run 'brew link awscli'" >&2
+    exit 1
+  fi
+done
+aws sts get-caller-identity --query Account --output text >/dev/null || {
+  echo "error: AWS credentials are not valid" >&2
+  exit 1
+}
+
 echo "==> Building API bundle"
 npm run build:lambda -w @himitsu/api --prefix "$ROOT" >/dev/null
 

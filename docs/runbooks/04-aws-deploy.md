@@ -44,6 +44,11 @@ infra/scripts/deploy.sh      # plan が表示されるので内容を確認し�
 
 > **初回の `plan` で必ず確認すること**: `Plan: N to add, 0 to change, 0 to destroy.`（既存リソースへの変更・削除が 0 件）
 
+### 途中で止まった場合（共通）
+
+スクリプトは開始前に必要なコマンドと AWS 認証を確認しますが、それ以降に失敗すると **Lambda だけ新しく、マイグレーション・画面は古い** 状態になり得ます（新しいコードが新しいテーブル構造を前提にしていると、保存などが失敗する）。
+原因を直して **同じコマンドをもう一度実行** すれば、残りの手順（マイグレーション・画面のアップロード）が実行されて揃います。
+
 ### 初回デプロイで途中失敗した場合
 
 途中で失敗しても、作成済みのリソースは state に記録されています。原因を直して **同じコマンドを再実行** すれば続きから作成されます（作り直しにはなりません）。
@@ -86,6 +91,7 @@ git checkout main
 
 | 症状 | 原因と対処 |
 | --- | --- |
+| `error: 'aws' not found in PATH` | AWS CLI が見つからない。Homebrew で入れている場合はリンクが外れていることがある → `brew link awscli` |
 | `ExpiredToken` / `InvalidClientTokenId` | AWS 認証情報の期限切れ・誤り。`aws sts get-caller-identity` で確認 |
 | `Error acquiring the state lock` | 別の terraform が実行中、または異常終了。実行中でないことを確認して `terraform force-unlock <ID>` |
 | マイグレーションで `migration failed` | 表示された `errorMessage` を確認。ログは [06-operations.md](./06-operations.md#ログを見る) |
