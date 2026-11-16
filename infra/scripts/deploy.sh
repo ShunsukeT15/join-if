@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds and deploys ひみつ出欠 to AWS:
+# Builds and deploys Join if to AWS:
 #   1. bundle the API for Lambda   2. terraform apply   3. run DB migrations
 #   4. build the SPA and upload to S3   5. invalidate CloudFront
 # Usage: infra/scripts/deploy.sh [--auto-approve]

@@ -1,4 +1,4 @@
-# AWS コスト試算 — ひみつ出欠（ap-northeast-1 / 東京）
+# AWS コスト試算 — Join if（ap-northeast-1 / 東京）
 
 試算日: 2026-11-15。単価は AWS Pricing API（オンデマンド、税抜）から取得。為替は 1 USD = 150 円で概算。
 構成は `infra/terraform`（CloudFront + S3 + Lambda + RDS PostgreSQL、NAT なし）。

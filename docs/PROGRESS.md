@@ -1,4 +1,4 @@
-# 進捗表 — ひみつ出欠
+# 進捗表 — Join if
 
 計画: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
 凡例: ✅ 完了 / 🚧 作業中 / ⬜ 未着手 / ⏸ 保留
@@ -97,3 +97,4 @@
 | 2026-11-16 | エージェント向けルール AGENTS.md（共通）と CLAUDE.md（Claude 固有）を追加 |
 | 2026-11-16 | デプロイ手順を集約: npm run doctor（点検・アカウント取り違え検知）/ release（テスト→デプロイ→スモークテスト、--plan で確認のみ）/ setup:aws（初回のアカウント設定） |
 | 2026-11-16 | 初回のアカウント設定を実施: コスト配分タグ Project を有効化、予算アラート himitsu-prod-monthly（15 USD、予測・実績 100% で通知）を作成 |
+| 2026-11-16 | サービス名を「Join if」に変更（表示名・ドキュメント）。内部識別子・AWS リソース名は維持 |

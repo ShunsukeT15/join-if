@@ -17,13 +17,13 @@ export function Layout({ children }: { children: ReactNode }) {
     <>
       <header className="app-header">
         <div className="app-header__inner">
-          <Link to="/" className="brand" aria-label="ひみつ出欠 トップへ">
+          <Link to="/" className="brand" aria-label="Join if トップへ">
             <span className="brand__mark" aria-hidden>
               <svg width="16" height="16" viewBox="0 0 24 24">
                 <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
-            ひみつ出欠
+            Join if
           </Link>
         </div>
       </header>
@@ -31,7 +31,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <footer className="app-footer">
         <Link to="/terms">利用規約</Link>
         <Link to="/privacy">プライバシーポリシー</Link>
-        <span>© ひみつ出欠</span>
+        <span>© Join if</span>
       </footer>
     </>
   );

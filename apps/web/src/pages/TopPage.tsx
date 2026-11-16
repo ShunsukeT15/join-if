@@ -109,7 +109,7 @@ export function TopPage() {
       </form>
 
       <section className="card">
-        <h2 className="card__title">ひみつ出欠のしくみ</h2>
+        <h2 className="card__title">Join if のしくみ</h2>
         <ul className="feature-list">
           <li>個別の回答内容は、招待した人にも他のメンバーにも表示されません。</li>
           <li>「行かない」と「条件が合わず不参加」は、どの画面でも区別されません。</li>
