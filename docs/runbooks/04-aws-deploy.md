@@ -51,6 +51,17 @@ EventBridge（毎日 03:17 JST）→ Lambda { action: "purge" }（期限切れ�
 
 > **API の型（`packages/contracts`）を変える変更は、先に `npm run release` で API をデプロイしてから `main` にマージしてください。** 画面だけ先に新しくなると、古い API と食い違って保存などが失敗します。
 
+### 自動デプロイが「Could not assume role with OIDC」で失敗する場合
+
+GitHub が送るトークンの `sub` と、IAM ロールの条件（`github_oidc_repository`）が一致していません。GitHub の `sub` は `repo:所有者@所有者ID/リポジトリ@リポジトリID:ref:refs/heads/main` の形式です（リポジトリを作り直す・名前を変えると ID が変わる）。実際の値は CloudTrail で確認できます。
+
+```bash
+aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+  --max-results 1 --query 'Events[0].CloudTrailEvent' --output text | grep -o '"userName":"[^"]*"'
+```
+
+確認した値を `terraform.tfvars` の `github_oidc_repository` に設定して `terraform apply` します。
+
 ワークフローに書いている値（ロール ARN・バケット名・ディストリビューション ID・URL）は Terraform の出力です。環境を作り直したときは `terraform -chdir=infra/terraform output` で確認して書き換えます。
 
 ## 初回デプロイ

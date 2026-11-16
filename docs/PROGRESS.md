@@ -100,3 +100,4 @@
 | 2026-11-16 | 初回のアカウント設定を実施: コスト配分タグ Project を有効化、予算アラート himitsu-prod-monthly（15 USD、予測・実績 100% で通知）を作成 |
 | 2026-11-16 | サービス名を「Join if」に変更（表示名・ドキュメント）。内部識別子・AWS リソース名は維持 |
 | 2026-11-16 | 画面の CI/CD を構築: GitHub OIDC プロバイダーと最小権限の IAM ロールを Terraform で作成、deploy-web.yml を追加（main への push で自動デプロイ）。GitHub への push は未実施 |
+| 2026-11-16 | 自動デプロイ初回は OIDC の sub 形式（ID 入り）の違いで失敗→ロール条件を修正。Actions を v5 に更新 |

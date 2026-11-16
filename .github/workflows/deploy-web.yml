@@ -39,9 +39,9 @@ jobs:
       contents: read
       id-token: write # OIDC: short-lived AWS credentials, no stored keys
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -61,7 +61,7 @@ jobs:
         env:
           VITE_API_BASE_URL: "" # same origin via CloudFront
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

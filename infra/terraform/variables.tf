@@ -85,6 +85,12 @@ variable "github_repository" {
   default     = "ShunsukeT15/join-if"
 }
 
+variable "github_oidc_repository" {
+  description = "Repository as it appears in GitHub's OIDC subject: owner@ownerId/repo@repoId (see CloudTrail AssumeRoleWithWebIdentity events)"
+  type        = string
+  default     = "ShunsukeT15@84225335/join-if@1458620122"
+}
+
 variable "github_deploy_branch" {
   type    = string
   default = "main"

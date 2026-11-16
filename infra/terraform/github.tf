@@ -8,6 +8,11 @@ resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = []
+
+  # AWS fills in the thumbprint itself (and no longer uses it for GitHub); avoid a perpetual diff.
+  lifecycle {
+    ignore_changes = [thumbprint_list]
+  }
 }
 
 data "aws_iam_openid_connect_provider" "github" {
@@ -31,8 +36,10 @@ resource "aws_iam_role" "github_web_deploy" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          # Only workflows running on the main branch of this repository.
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/${var.github_deploy_branch}"
+          # Only workflows running on the main branch of this repository. GitHub's subject
+          # includes immutable ids ("owner@ownerId/repo@repoId"), so a renamed or re-created
+          # repository with the same name cannot assume this role.
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_oidc_repository}:ref:refs/heads/${var.github_deploy_branch}"
         }
       }
     }]

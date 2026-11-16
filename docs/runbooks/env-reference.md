@@ -47,6 +47,7 @@ AWS では Lambda の環境変数を Terraform（`infra/terraform/api.tf`）が�
 | `budget_alert_email` | `""` | 予算アラートの通知先（空なら作らない） |
 | `monthly_budget_usd` | `40` | 月額予算 |
 | `github_repository` | `ShunsukeT15/join-if` | 画面の自動デプロイを許可する GitHub リポジトリ |
+| `github_oidc_repository` | `ShunsukeT15@84225335/join-if@1458620122` | GitHub の OIDC トークンに入るリポジトリの表記（`所有者@ID/リポジトリ@ID`）。ロールの引き受け条件に使う |
 | `github_deploy_branch` | `main` | 自動デプロイを許可するブランチ |
 | `create_github_oidc_provider` | `true` | アカウントに GitHub の OIDC プロバイダーがすでにある場合は `false` |
 | `budget_alert_threshold_percent` | `100` | 予測・実績が予算のこの割合を超えたら通知 |
