@@ -136,7 +136,12 @@ export async function addCommunity(
     if (existing.some((r) => r.communityName === communityName)) {
       throw validation({ name: '同じ名前のコミュニティがあります' });
     }
+    // Communities are listed by creation time; never let two share the same instant.
+    const now = deps.clock.now();
+    const last = existing.reduce((t, r) => Math.max(t, r.createdAt.getTime()), 0);
+    const createdAt = new Date(Math.max(now.getTime(), last + 1));
     const roomId = await insertNewRoom(deps, tx, {
+      createdAt,
       title: event.title,
       message: input.message ?? event.message,
       inviteMode: input.inviteMode,

@@ -482,6 +482,11 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
       expect(await code(A.updateSettings(d, standalone.roomId, admin(standalone.adminToken), { communityName: 'x' }))).toBe('validation');
     });
 
+    it('lists communities in creation order even when created at the same instant', async () => {
+      for (const name of ['c', 'a', 'b']) await E.addCommunity(d, eventId, admin(token), { name });
+      expect((await E.getEventAdminView(d, eventId, admin(token))).communities.map((c) => c.name)).toEqual(['c', 'a', 'b']);
+    });
+
     it('caps communities per event', async () => {
       for (let i = 0; i < 20; i++) await E.addCommunity(d, eventId, admin(token), { name: `c${i}` });
       expect(await code(E.addCommunity(d, eventId, admin(token), { name: 'over' }))).toBe('validation');

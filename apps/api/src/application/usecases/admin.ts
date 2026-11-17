@@ -51,6 +51,8 @@ export interface NewRoomInput {
   adminTokenHash: string;
   eventId: string | null;
   communityName: string | null;
+  /** Defaults to now. Communities pass a strictly increasing time to keep a stable order. */
+  createdAt?: Date | undefined;
 }
 
 /** Validates and inserts a room (standalone, or a community of an event). Returns its id. */
@@ -60,6 +62,7 @@ export async function insertNewRoom(deps: Deps, tx: Tx, input: NewRoomInput): Pr
     { requireTitle: true },
   );
   const now = deps.clock.now();
+  const createdAt = input.createdAt ?? now;
   const deadlineAt = normalizeDeadline(input.deadlineAt, now) ?? null;
   const inviteMode = input.inviteMode ?? 'individual';
   const groupToken = inviteMode === 'group' ? deps.tokens.generate() : null;
@@ -79,7 +82,7 @@ export async function insertNewRoom(deps: Deps, tx: Tx, input: NewRoomInput): Pr
     groupTokenHash: groupToken ? deps.tokens.hash(groupToken) : null,
     groupTokenEnc: groupToken ? deps.tokens.encrypt(groupToken) : null,
     deadlineAt,
-    createdAt: now,
+    createdAt,
     closedAt: null,
     purgeAfter: addDays(now, RETENTION_UNCLOSED_DAYS),
   };
