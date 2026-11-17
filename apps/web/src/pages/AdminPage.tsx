@@ -1,7 +1,7 @@
 import type { AdminMember, AdminViewResponse, UpdateSettingsRequest } from '@himitsu/contracts';
 import { LIMITS } from '@himitsu/contracts';
 import { useState, type FormEvent } from 'react';
-import { useLocation, useParams } from 'react-router';
+import { Link, useLocation, useParams } from 'react-router';
 import { useApi } from '../api/ApiProvider';
 import { ApiError } from '../api/client';
 import { AnsweredPill, AnswerProgress, ErrorView, EventHeader, ResultCard } from '../components/room';
@@ -68,6 +68,12 @@ export function AdminPage() {
           </p>
         </section>
       ) : null}
+
+      {data.event && (
+        <Link className="back-link" to={`/e/${data.event.id}/admin#${token}`}>
+          ‹ イベント「{data.event.title}」に戻る
+        </Link>
+      )}
 
       <EventHeader room={data.room} />
 
@@ -296,7 +302,8 @@ function SettingsCard({
   onSave: (patch: UpdateSettingsRequest) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(data.room.title);
+  const isCommunity = Boolean(data.event);
+  const [title, setTitle] = useState(isCommunity ? (data.room.communityName ?? '') : data.room.title);
   const [deadlineText, setDeadlineText] = useState(data.room.deadlineText);
   const [deadlineLocal, setDeadlineLocal] = useState(toLocalInput(data.room.deadlineAt));
   const [message, setMessage] = useState(data.room.message);
@@ -309,14 +316,14 @@ function SettingsCard({
           type="button"
           className="btn btn--ghost btn--sm"
           onClick={() => {
-            setTitle(data.room.title);
+            setTitle(isCommunity ? (data.room.communityName ?? '') : data.room.title);
             setDeadlineText(data.room.deadlineText);
             setDeadlineLocal(toLocalInput(data.room.deadlineAt));
             setMessage(data.room.message);
             setEditing(true);
           }}
         >
-          ✎ イベント情報を編集
+          ✎ {isCommunity ? 'コミュニティ情報' : 'イベント情報'}を編集
         </button>
       </div>
     );
@@ -325,7 +332,9 @@ function SettingsCard({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    const patch: UpdateSettingsRequest = { title, deadlineText, message };
+    const patch: UpdateSettingsRequest = isCommunity
+      ? { communityName: title, deadlineText, message }
+      : { title, deadlineText, message };
     // Send the deadline only when it changed (an unchanged past value would be rejected).
     if (deadlineLocal !== toLocalInput(data.room.deadlineAt)) patch.deadlineAt = fromLocalInput(deadlineLocal);
     const ok = await onSave(patch);
@@ -335,12 +344,19 @@ function SettingsCard({
 
   return (
     <form className="card" onSubmit={submit}>
-      <h2 className="card__title">イベント情報</h2>
+      <h2 className="card__title">{isCommunity ? 'コミュニティ情報' : 'イベント情報'}</h2>
       <div className="field">
         <label className="field__label" htmlFor="s-title">
-          イベント名
+          {isCommunity ? 'コミュニティ名' : 'イベント名'}
         </label>
-        <input id="s-title" className="input" value={title} maxLength={LIMITS.titleMax} onChange={(e) => setTitle(e.target.value)} />
+        <input
+          id="s-title"
+          className="input"
+          value={title}
+          maxLength={isCommunity ? LIMITS.communityNameMax : LIMITS.titleMax}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        {isCommunity && <span className="field__hint">イベント名はイベントの管理画面で変更します。</span>}
       </div>
       <div className="field">
         <label className="field__label" htmlFor="s-deadline-at">

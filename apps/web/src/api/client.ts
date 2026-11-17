@@ -1,5 +1,11 @@
 import type {
+  AddCommunityRequest,
+  AddCommunityResponse,
   AddMemberResponse,
+  CreateEventRequest,
+  CreateEventResponse,
+  EventAdminViewResponse,
+  UpdateEventRequest,
   AdminViewResponse,
   ClaimResponse,
   CreateRoomRequest,
@@ -31,6 +37,10 @@ export interface ApiClient {
   getGroupView(roomId: string, groupToken: string): Promise<GroupViewResponse>;
   claimName(roomId: string, groupToken: string, memberId: string): Promise<ClaimResponse>;
   reissueGroupToken(roomId: string, adminToken: string): Promise<GroupTokenResponse>;
+  createEvent(req: CreateEventRequest): Promise<CreateEventResponse>;
+  getEventAdminView(eventId: string, adminToken: string): Promise<EventAdminViewResponse>;
+  updateEvent(eventId: string, adminToken: string, req: UpdateEventRequest): Promise<EventAdminViewResponse>;
+  addCommunity(eventId: string, adminToken: string, req: AddCommunityRequest): Promise<AddCommunityResponse>;
 }
 
 export class ApiError extends Error {
@@ -136,6 +146,18 @@ export class HttpApiClient implements ApiClient {
   }
   reissueGroupToken(roomId: string, admin: string) {
     return this.request<GroupTokenResponse>('POST', `/api/rooms/${enc(roomId)}/group/reissue`, { admin });
+  }
+  createEvent(req: CreateEventRequest) {
+    return this.request<CreateEventResponse>('POST', '/api/events', {}, req);
+  }
+  getEventAdminView(eventId: string, admin: string) {
+    return this.request<EventAdminViewResponse>('GET', `/api/events/${enc(eventId)}/admin`, { admin });
+  }
+  updateEvent(eventId: string, admin: string, req: UpdateEventRequest) {
+    return this.request<EventAdminViewResponse>('PATCH', `/api/events/${enc(eventId)}/admin`, { admin }, req);
+  }
+  addCommunity(eventId: string, admin: string, req: AddCommunityRequest) {
+    return this.request<AddCommunityResponse>('POST', `/api/events/${enc(eventId)}/communities`, { admin }, req);
   }
 }
 

@@ -28,6 +28,8 @@ export function TopPage() {
   const [deadlineLocal, setDeadlineLocal] = useState('');
   const [message, setMessage] = useState('');
   const [inviteMode, setInviteMode] = useState<InviteMode>('individual');
+  /** room: one group / event: several communities under one organizer. */
+  const [kind, setKind] = useState<'room' | 'event'>('room');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -36,6 +38,11 @@ export function TopPage() {
     setBusy(true);
     setError(null);
     try {
+      if (kind === 'event') {
+        const ev = await api.createEvent({ title, message });
+        navigate(`/e/${ev.eventId}/admin#${ev.adminToken}`, { state: { justCreated: true } });
+        return;
+      }
       const res = await api.createRoom({
         title,
         deadlineText,
@@ -83,7 +90,20 @@ export function TopPage() {
       </ol>
 
       <form className="card" onSubmit={submit} noValidate>
-        <h2 className="card__title">ルームを作る</h2>
+        <h2 className="card__title">出欠確認をはじめる</h2>
+        <div className="kind-tabs" role="tablist" aria-label="作るもの">
+          <button type="button" role="tab" className="kind-tab" aria-selected={kind === 'room'} onClick={() => setKind('room')}>
+            1つのグループで集める
+          </button>
+          <button type="button" role="tab" className="kind-tab" aria-selected={kind === 'event'} onClick={() => setKind('event')}>
+            複数のグループで集める
+          </button>
+        </div>
+        {kind === 'event' && (
+          <p className="muted small" style={{ margin: '-4px 0 14px' }}>
+            「大学の友人」「会社の同僚」のように、グループ（コミュニティ）ごとに招待して、イベント全体の参加者をまとめて把握できます。招待・締め切り・結果はグループごとです。
+          </p>
+        )}
         <div className="field">
           <label className="field__label" htmlFor="title">
             イベント名 <span className="field__hint">必須</span>
@@ -100,55 +120,59 @@ export function TopPage() {
           {error?.fields.title && <span className="field__error">{error.fields.title}</span>}
         </div>
 
-        <fieldset className="field mode-field">
-          <legend className="field__label">招待のしかた</legend>
-          <div className="mode-options">
-            {MODES.map((m) => (
-              <label key={m.value} className="mode-option" data-selected={inviteMode === m.value}>
-                <input
-                  type="radio"
-                  name="inviteMode"
-                  value={m.value}
-                  checked={inviteMode === m.value}
-                  onChange={() => setInviteMode(m.value)}
-                />
-                <span className="mode-option__title">{m.title}</span>
-                <span className="mode-option__body">{m.body}</span>
+        {kind === 'room' && (
+          <>
+            <fieldset className="field mode-field">
+              <legend className="field__label">招待のしかた</legend>
+              <div className="mode-options">
+                {MODES.map((m) => (
+                  <label key={m.value} className="mode-option" data-selected={inviteMode === m.value}>
+                    <input
+                      type="radio"
+                      name="inviteMode"
+                      value={m.value}
+                      checked={inviteMode === m.value}
+                      onChange={() => setInviteMode(m.value)}
+                    />
+                    <span className="mode-option__title">{m.title}</span>
+                    <span className="mode-option__body">{m.body}</span>
+                  </label>
+                ))}
+              </div>
+              <span className="field__hint">あとから変更はできません。</span>
+            </fieldset>
+
+            <div className="field">
+              <label className="field__label" htmlFor="deadlineAt">
+                自動で締め切る日時 <span className="field__hint">任意</span>
               </label>
-            ))}
-          </div>
-          <span className="field__hint">あとから変更はできません。</span>
-        </fieldset>
+              <input
+                id="deadlineAt"
+                type="datetime-local"
+                className={`input${error?.fields.deadlineAt ? ' input--error' : ''}`}
+                value={deadlineLocal}
+                onChange={(e) => setDeadlineLocal(e.target.value)}
+              />
+              <span className="field__hint">この日時になると回答を締め切り、自動で結果を出します。空欄なら手動で締め切ります。</span>
+              {error?.fields.deadlineAt && <span className="field__error">{error.fields.deadlineAt}</span>}
+            </div>
 
-        <div className="field">
-          <label className="field__label" htmlFor="deadlineAt">
-            自動で締め切る日時 <span className="field__hint">任意</span>
-          </label>
-          <input
-            id="deadlineAt"
-            type="datetime-local"
-            className={`input${error?.fields.deadlineAt ? ' input--error' : ''}`}
-            value={deadlineLocal}
-            onChange={(e) => setDeadlineLocal(e.target.value)}
-          />
-          <span className="field__hint">この日時になると回答を締め切り、自動で結果を出します。空欄なら手動で締め切ります。</span>
-          {error?.fields.deadlineAt && <span className="field__error">{error.fields.deadlineAt}</span>}
-        </div>
-
-        <div className="field">
-          <label className="field__label" htmlFor="deadline">
-            締切のメモ <span className="field__hint">任意・表示のみ</span>
-          </label>
-          <input
-            id="deadline"
-            className="input"
-            value={deadlineText}
-            onChange={(e) => setDeadlineText(e.target.value)}
-            placeholder="例：12月20日ごろまで"
-            maxLength={LIMITS.deadlineTextMax}
-          />
-          {error?.fields.deadlineText && <span className="field__error">{error.fields.deadlineText}</span>}
-        </div>
+            <div className="field">
+              <label className="field__label" htmlFor="deadline">
+                締切のメモ <span className="field__hint">任意・表示のみ</span>
+              </label>
+              <input
+                id="deadline"
+                className="input"
+                value={deadlineText}
+                onChange={(e) => setDeadlineText(e.target.value)}
+                placeholder="例：12月20日ごろまで"
+                maxLength={LIMITS.deadlineTextMax}
+              />
+              {error?.fields.deadlineText && <span className="field__error">{error.fields.deadlineText}</span>}
+            </div>
+          </>
+        )}
         <div className="field">
           <label className="field__label" htmlFor="message">
             メッセージ <span className="field__hint">任意</span>
@@ -169,7 +193,7 @@ export function TopPage() {
           </div>
         )}
         <button type="submit" className="btn btn--primary btn--block" disabled={busy || !title.trim()}>
-          {busy ? '作成中…' : 'ルームを作成する'}
+          {busy ? '作成中…' : kind === 'event' ? 'イベントを作成する' : 'ルームを作成する'}
         </button>
       </form>
 

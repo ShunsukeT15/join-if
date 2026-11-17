@@ -159,7 +159,7 @@ describe('MemberPage answer form', () => {
     const api = fakeApi({
       getMemberView: vi.fn().mockResolvedValue(
         memberView({
-          room: { title: '結婚式', deadlineText: '', message: '', status: 'closed', inviteMode: 'individual', deadlineAt: null },
+          room: { title: '結婚式', deadlineText: '', message: '', status: 'closed', inviteMode: 'individual', deadlineAt: null, communityName: null },
           result: { attending: ['a'], computedAt: '2026-12-20T00:00:00Z' },
         }),
       ),
@@ -177,7 +177,7 @@ describe('TopPage', () => {
     const api = fakeApi({
       createRoom: vi.fn().mockResolvedValue({ roomId: 'r1', adminToken: 'AT' }),
       getAdminView: vi.fn().mockResolvedValue({
-        room: { title: '同窓会', deadlineText: '', message: '', status: 'open', inviteMode: 'individual', deadlineAt: null },
+        room: { title: '同窓会', deadlineText: '', message: '', status: 'open', inviteMode: 'individual', deadlineAt: null, communityName: null },
         members: [],
         unansweredCount: 0,
         result: null,
@@ -196,7 +196,7 @@ describe('TopPage', () => {
     const api = fakeApi({
       createRoom: vi.fn().mockResolvedValue({ roomId: 'r2', adminToken: 'AT' }),
       getAdminView: vi.fn().mockResolvedValue({
-        room: { title: '旅行', deadlineText: '', message: '', status: 'open', inviteMode: 'group', deadlineAt: null },
+        room: { title: '旅行', deadlineText: '', message: '', status: 'open', inviteMode: 'group', deadlineAt: null, communityName: null },
         members: [{ id: 'a', name: '鈴木', answered: false, inviteUsed: false }],
         unansweredCount: 1,
         result: null,
@@ -216,7 +216,7 @@ describe('TopPage', () => {
 
 describe('GroupPage', () => {
   const groupView = {
-    room: { title: '同窓会', deadlineText: '', message: '', status: 'open' as const, inviteMode: 'group' as const, deadlineAt: null },
+    room: { title: '同窓会', deadlineText: '', message: '', status: 'open' as const, inviteMode: 'group' as const, deadlineAt: null, communityName: null },
     members: [
       { id: 'a', name: '佐藤', taken: true },
       { id: 'b', name: '鈴木', taken: false },
@@ -257,5 +257,57 @@ describe('GroupPage', () => {
     const api = fakeApi({ getGroupView: vi.fn().mockResolvedValue(groupView) });
     renderAt('/r/g3/g#GT', api);
     expect((await screen.findByRole('link', { name: '自分の回答画面を開く' })).getAttribute('href')).toBe('/r/g3/m#SAVED');
+  });
+});
+
+describe('Events', () => {
+  const eventView = {
+    event: { title: '太郎＆花子 結婚式', message: '' },
+    communities: [
+      { roomId: 'r1', name: '新郎友人', inviteMode: 'group' as const, status: 'closed' as const, deadlineAt: null, memberCount: 3, answeredCount: 3, attendingCount: 2 },
+      { roomId: 'r2', name: '新婦同僚', inviteMode: 'individual' as const, status: 'open' as const, deadlineAt: null, memberCount: 4, answeredCount: 1, attendingCount: null },
+    ],
+    totals: { memberCount: 7, answeredCount: 4, attendingCount: 2, closedCount: 1 },
+    attendees: [
+      { name: '佐藤', community: '新郎友人' },
+      { name: '鈴木', community: '新郎友人' },
+    ],
+  };
+
+  it('creates an event from the top page and opens its admin page', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({
+      createEvent: vi.fn().mockResolvedValue({ eventId: 'e1', adminToken: 'EAT' }),
+      getEventAdminView: vi.fn().mockResolvedValue({ ...eventView, communities: [], totals: { memberCount: 0, answeredCount: 0, attendingCount: 0, closedCount: 0 }, attendees: [] }),
+    });
+    renderAt('/', api);
+    await user.click(screen.getByRole('tab', { name: '複数のグループで集める' }));
+    expect(screen.queryByText('招待のしかた')).toBeNull();
+    await user.type(screen.getByLabelText(/イベント名/), '結婚式');
+    await user.click(screen.getByRole('button', { name: 'イベントを作成する' }));
+    expect(api.createEvent).toHaveBeenCalledWith({ title: '結婚式', message: '' });
+    expect(await screen.findByText('この管理用URLを必ず保存してください')).toBeTruthy();
+    expect(api.getEventAdminView).toHaveBeenCalledWith('e1', 'EAT');
+  });
+
+  it('shows totals, communities linking to their admin pages, and attendees', async () => {
+    const api = fakeApi({ getEventAdminView: vi.fn().mockResolvedValue(eventView) });
+    renderAt('/e/e1/admin#EAT', api);
+    expect(await screen.findByText('イベント全体')).toBeTruthy();
+    const link = screen.getByRole('link', { name: /新婦同僚/ });
+    expect(link.getAttribute('href')).toBe('/r/r2/admin#EAT');
+    expect(screen.getByText('結果：締め切り後に表示')).toBeTruthy();
+    expect(screen.getByText('参加者一覧')).toBeTruthy();
+    expect(screen.getByText('参加人数は、締め切ったコミュニティの分だけを数えています。')).toBeTruthy();
+  });
+
+  it('adds a community', async () => {
+    const user = userEvent.setup();
+    const addCommunity = vi.fn().mockResolvedValue({ roomId: 'r3' });
+    const api = fakeApi({ getEventAdminView: vi.fn().mockResolvedValue(eventView), addCommunity });
+    renderAt('/e/e1/admin#EAT', api);
+    await user.type(await screen.findByLabelText('コミュニティ名'), 'サークル');
+    await user.click(screen.getByRole('button', { name: '追加する' }));
+    expect(addCommunity).toHaveBeenCalledWith('e1', 'EAT', { name: 'サークル', inviteMode: 'group', deadlineAt: null });
   });
 });

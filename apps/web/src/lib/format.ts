@@ -39,6 +39,7 @@ export const urls = {
   invite: (roomId: string, token: string) => `${location.origin}/r/${roomId}/i#${token}`,
   member: (roomId: string, token: string) => `${location.origin}/r/${roomId}/m#${token}`,
   group: (roomId: string, token: string) => `${location.origin}/r/${roomId}/g#${token}`,
+  eventAdmin: (eventId: string, token: string) => `${location.origin}/e/${eventId}/admin#${token}`,
 };
 
 /** Message for the whole group (group mode). */

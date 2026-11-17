@@ -15,6 +15,7 @@ export function EventHeader({ room }: { room: RoomInfo }) {
         )}
       </div>
       <h1 className="page-title">{room.title}</h1>
+      {room.communityName && <span className="community-badge">{room.communityName}</span>}
       {deadlineLabel(room) && <div className="event-meta">回答締切：{deadlineLabel(room)}</div>}
       {room.deadlineAt && room.deadlineText && <div className="event-meta">{room.deadlineText}</div>}
       {room.message && <p className="message">{room.message}</p>}

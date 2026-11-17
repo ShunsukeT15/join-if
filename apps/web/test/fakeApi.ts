@@ -19,12 +19,16 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     getGroupView: unimplemented(),
     claimName: unimplemented(),
     reissueGroupToken: unimplemented(),
+    createEvent: unimplemented(),
+    getEventAdminView: unimplemented(),
+    updateEvent: unimplemented(),
+    addCommunity: unimplemented(),
     ...overrides,
   };
 }
 
 export const memberView = (patch: Partial<MemberViewResponse> = {}): MemberViewResponse => ({
-  room: { title: '結婚式', deadlineText: '12月20日', message: '', status: 'open', inviteMode: 'individual', deadlineAt: null },
+  room: { title: '結婚式', deadlineText: '12月20日', message: '', status: 'open', inviteMode: 'individual', deadlineAt: null, communityName: null },
   members: [
     { id: 'me', name: '佐藤', answered: false },
     { id: 'a', name: '鈴木', answered: true },
