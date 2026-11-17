@@ -54,11 +54,14 @@ export function TopPage() {
     <>
       <section className="hero">
         <h1>
-          誰が何と答えたか、
-          <br />
-          誰にも見せない出欠確認。
+          <span className="hero__quote">「〇〇さんが来るなら行く」</span>
+          <span className="hero__line">そのまま答えられる出欠確認</span>
         </h1>
-        <p>「Aさんが来るなら行く」のような条件付きの回答もOK。条件を守りながら参加者が最大になる組み合わせを自動で出します。</p>
+        <p>
+          答えた中身は、幹事にもほかの参加者にも見えません。
+          <br className="hero__br" />
+          みんなの条件から、参加できる人がいちばん多くなる組み合わせを自動で出します。
+        </p>
       </section>
 
       <ol className="steps">
@@ -171,13 +174,26 @@ export function TopPage() {
       </form>
 
       <section className="card">
-        <h2 className="card__title">Join if のしくみ</h2>
-        <ul className="feature-list">
-          <li>個別の回答内容は、招待した人にも他のメンバーにも表示されません。</li>
-          <li>「行かない」と「条件が合わず不参加」は、どの画面でも区別されません。</li>
-          <li>回答する人には、招待した人も知らない本人専用の回答用URLが発行されます。</li>
-          <li>結婚式のほか、同窓会や旅行など、グループの集まり全般に使えます。</li>
-        </ul>
+        <h2 className="card__title">Join if でできること</h2>
+        <div className="benefits">
+          <div className="benefit">
+            <h3 className="benefit__who">答える人</h3>
+            <ul className="feature-list">
+              <li>「〇〇さんが来るなら」「全体で10人以上なら」など、条件付きで答えられる</li>
+              <li>答えた中身は幹事にも見えないので、気をつかわずに本音で答えられる</li>
+              <li>「行かない」と「条件が合わず不参加」は区別されない</li>
+            </ul>
+          </div>
+          <div className="benefit">
+            <h3 className="benefit__who">幹事</h3>
+            <ul className="feature-list">
+              <li>条件付きの人を一人ずつ調整しなくても、参加できる人がいちばん多くなる組み合わせが自動でわかる</li>
+              <li>LINE グループに URL を1つ送るだけ。リマインドもまとめて送れる</li>
+              <li>アカウント登録は不要。締切日時を決めれば自動で締め切る</li>
+            </ul>
+          </div>
+        </div>
+        <p className="muted small" style={{ margin: '12px 0 0' }}>結婚式、同窓会、旅行など、グループの集まり全般に使えます。</p>
       </section>
     </>
   );
