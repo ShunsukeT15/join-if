@@ -110,6 +110,24 @@ check('answer as the picked name → 200', (await req('PUT', `/api/rooms/${gRoom
 const gClosed = await req('POST', `/api/rooms/${gRoom}/close`, undefined, gAdmin);
 check('close group room → attends', gClosed.status === 200 && gClosed.json.result?.attending?.length === 1);
 
+// ---- Event with communities: the organizer sees totals; members see only their community ----
+const ev = await req('POST', '/api/events', { title: `[smoke] event ${new Date().toISOString()}` });
+check('create event → 201', ev.status === 201);
+const evAdmin = { 'X-Admin-Token': ev.json.adminToken };
+const comm = await req('POST', `/api/events/${ev.json.eventId}/communities`, { name: 'C1' }, evAdmin);
+check('add community → 201', comm.status === 201);
+const cRoom = comm.json.roomId;
+const cMember = await req('POST', `/api/rooms/${cRoom}/members`, { name: 'E1' }, evAdmin);
+check('event token manages the community', cMember.status === 201);
+const cClaim = await req('POST', `/api/rooms/${cRoom}/claim`, undefined, { 'X-Invite-Token': cMember.json.member.inviteToken });
+const cMe = await req('GET', `/api/rooms/${cRoom}/me`, undefined, { 'X-Member-Token': cClaim.json.memberToken });
+check('member sees the community name, no event data', cMe.json.room?.communityName === 'C1' && !/totals|attendees|communities/.test(JSON.stringify(cMe.json)));
+await req('PUT', `/api/rooms/${cRoom}/me/answer`, { choice: 'yes' }, { 'X-Member-Token': cClaim.json.memberToken });
+await req('POST', `/api/rooms/${cRoom}/close`, undefined, evAdmin);
+const evView = await req('GET', `/api/events/${ev.json.eventId}/admin`, undefined, evAdmin);
+check('event totals after close', evView.status === 200 && evView.json.totals?.attendingCount === 1 && evView.json.attendees?.[0]?.community === 'C1');
+check('room admin token cannot open the event', (await req('GET', `/api/events/${ev.json.eventId}/admin`, undefined, admin)).status === 404);
+
 const spa = await fetch(`${BASE}/r/${roomId}/m`);
 const html = await spa.text();
 if (html.toLowerCase().includes('<!doctype html')) {
