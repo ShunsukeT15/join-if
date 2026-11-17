@@ -12,50 +12,79 @@ import { conflict, notFound, roomClosed, validation } from '../../domain/errors.
 import {
   acceptsChanges,
   isPastDeadline,
+  normalizeCommunityName,
   normalizeDeadline,
   normalizeMemberName,
   normalizeSettings,
 } from '../../domain/roomRules.js';
-import type { Member, Room } from '../../domain/types.js';
+import type { InviteMode, Member, Room } from '../../domain/types.js';
 import { closeInTx, ensureClosedIfDue } from './closing.js';
 import { authorize, type Credential } from '../authorize.js';
 import type { Deps } from '../deps.js';
 import type { Tx } from '../ports/persistence.js';
 import { adminMember, resultView, roomInfo } from '../views.js';
 
-/** F-01: create a room and issue the admin token. */
+/** F-01: create a standalone room and issue the admin token. */
 export async function createRoom(deps: Deps, input: CreateRoomRequest): Promise<CreateRoomResponse> {
+  const adminToken = deps.tokens.generate();
+  const roomId = await deps.uow.transaction((tx) =>
+    insertNewRoom(deps, tx, {
+      title: input.title,
+      deadlineText: input.deadlineText,
+      message: input.message,
+      inviteMode: input.inviteMode,
+      deadlineAt: input.deadlineAt,
+      adminTokenHash: deps.tokens.hash(adminToken),
+      eventId: null,
+      communityName: null,
+    }),
+  );
+  return { roomId, adminToken };
+}
+
+export interface NewRoomInput {
+  title: string;
+  deadlineText?: string | undefined;
+  message?: string | undefined;
+  inviteMode?: InviteMode | undefined;
+  deadlineAt?: string | null | undefined;
+  adminTokenHash: string;
+  eventId: string | null;
+  communityName: string | null;
+}
+
+/** Validates and inserts a room (standalone, or a community of an event). Returns its id. */
+export async function insertNewRoom(deps: Deps, tx: Tx, input: NewRoomInput): Promise<string> {
   const settings = normalizeSettings(
     { title: input.title, deadlineText: input.deadlineText ?? '', message: input.message ?? '' },
     { requireTitle: true },
   );
-  const adminToken = deps.tokens.generate();
   const now = deps.clock.now();
   const deadlineAt = normalizeDeadline(input.deadlineAt, now) ?? null;
   const inviteMode = input.inviteMode ?? 'individual';
   const groupToken = inviteMode === 'group' ? deps.tokens.generate() : null;
 
-  return deps.uow.transaction(async (tx) => {
-    let id = deps.ids.roomId();
-    for (let i = 0; i < 5 && (await tx.rooms.findById(id)); i++) id = deps.ids.roomId();
-    const room: Room = {
-      id,
-      title: settings.title!,
-      deadlineText: settings.deadlineText!,
-      message: settings.message!,
-      status: 'open',
-      inviteMode,
-      adminTokenHash: deps.tokens.hash(adminToken),
-      groupTokenHash: groupToken ? deps.tokens.hash(groupToken) : null,
-      groupTokenEnc: groupToken ? deps.tokens.encrypt(groupToken) : null,
-      deadlineAt,
-      createdAt: now,
-      closedAt: null,
-      purgeAfter: addDays(now, RETENTION_UNCLOSED_DAYS),
-    };
-    await tx.rooms.insert(room);
-    return { roomId: id, adminToken };
-  });
+  let id = deps.ids.roomId();
+  for (let i = 0; i < 5 && (await tx.rooms.findById(id)); i++) id = deps.ids.roomId();
+  const room: Room = {
+    id,
+    eventId: input.eventId,
+    communityName: input.communityName,
+    title: settings.title!,
+    deadlineText: settings.deadlineText!,
+    message: settings.message!,
+    status: 'open',
+    inviteMode,
+    adminTokenHash: input.adminTokenHash,
+    groupTokenHash: groupToken ? deps.tokens.hash(groupToken) : null,
+    groupTokenEnc: groupToken ? deps.tokens.encrypt(groupToken) : null,
+    deadlineAt,
+    createdAt: now,
+    closedAt: null,
+    purgeAfter: addDays(now, RETENTION_UNCLOSED_DAYS),
+  };
+  await tx.rooms.insert(room);
+  return id;
 }
 
 async function buildAdminView(deps: Deps, tx: Tx, room: Room): Promise<AdminViewResponse> {
@@ -69,7 +98,14 @@ async function buildAdminView(deps: Deps, tx: Tx, room: Room): Promise<AdminView
     unansweredCount: members.filter((m) => !answered.has(m.id)).length,
     result: resultView(room, result, members),
     ...(room.inviteMode === 'group' && room.groupTokenEnc ? { groupToken: deps.tokens.decrypt(room.groupTokenEnc) } : {}),
+    ...(await eventRef(tx, room)),
   };
+}
+
+async function eventRef(tx: Tx, room: Room): Promise<{ event?: { id: string; title: string } }> {
+  if (!room.eventId) return {};
+  const event = await tx.events.findById(room.eventId);
+  return event ? { event: { id: event.id, title: event.title } } : {};
 }
 
 /** GET admin view: statuses only, never answer contents. */
@@ -90,12 +126,20 @@ export async function updateSettings(
   cred: Credential,
   input: UpdateSettingsRequest,
 ): Promise<AdminViewResponse> {
-  const { deadlineAt: rawDeadline, ...texts } = input;
+  const { deadlineAt: rawDeadline, communityName: rawCommunity, ...texts } = input;
   const patch = normalizeSettings(texts, { requireTitle: false });
   const deadlineAt = normalizeDeadline(rawDeadline, deps.clock.now());
   return deps.uow.withRoomLock(roomId, async (tx, room) => {
     await authorize(tx, deps.tokens, 'admin', room, cred);
-    const updated: Room = { ...room, ...patch, ...(deadlineAt !== undefined ? { deadlineAt } : {}) };
+    // A community takes its title from the event; it has a community name instead.
+    if (room.eventId !== null && patch.title !== undefined) {
+      throw validation({ title: 'イベント名はイベントの管理画面で変更してください' });
+    }
+    if (room.eventId === null && rawCommunity !== undefined) {
+      throw validation({ communityName: 'コミュニティ名はイベントのコミュニティでのみ設定できます' });
+    }
+    const communityName = rawCommunity !== undefined ? normalizeCommunityName(rawCommunity) : room.communityName;
+    const updated: Room = { ...room, ...patch, communityName, ...(deadlineAt !== undefined ? { deadlineAt } : {}) };
     await tx.rooms.update(updated);
     await tx.audit.append({
       roomId,
@@ -238,9 +282,14 @@ export async function reopenRoom(deps: Deps, roomId: string, cred: Credential): 
   });
 }
 
-/** §7.5: delete rooms past their purge date. */
+/** §7.5: delete rooms past their purge date, and events that expired or have no rooms left. */
 export async function purgeExpiredRooms(deps: Deps): Promise<number> {
-  return deps.uow.transaction((tx) => tx.rooms.deleteExpired(deps.clock.now()));
+  return deps.uow.transaction(async (tx) => {
+    const now = deps.clock.now();
+    const rooms = await tx.rooms.deleteExpired(now);
+    await tx.events.deleteExpired(now);
+    return rooms;
+  });
 }
 
 /** group mode: a new shared URL (e.g. it leaked). Members who already picked their name keep their URLs. */

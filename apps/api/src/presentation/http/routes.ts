@@ -1,12 +1,16 @@
 import type { z } from 'zod';
 import type { CredentialKind } from '../../application/authorize.js';
 import * as A from '../../application/usecases/admin.js';
+import * as E from '../../application/usecases/event.js';
 import * as G from '../../application/usecases/group.js';
 import * as M from '../../application/usecases/member.js';
 import type { Credential } from '../../application/authorize.js';
 import type { Deps } from '../../application/deps.js';
 import {
+  addCommunitySchema,
   addMemberSchema,
+  createEventSchema,
+  updateEventSchema,
   createRoomSchema,
   groupClaimSchema,
   saveAnswerSchema,
@@ -25,7 +29,7 @@ export interface RateRule {
 
 export interface HandlerContext<B> {
   deps: Deps;
-  params: { roomId: string; memberId: string };
+  params: { roomId: string; memberId: string; eventId: string };
   cred: Credential;
   body: B;
 }
@@ -173,5 +177,40 @@ export const routes: RouteDef[] = [
     rate: [tokenCheck],
     status: 200,
     handler: ({ deps, params, cred, body }) => G.claimName(deps, params.roomId, cred, body),
+  }),
+  def({
+    method: 'POST',
+    path: '/api/events',
+    auth: null,
+    body: createEventSchema,
+    rate: [createRoomRule],
+    status: 201,
+    handler: ({ deps, body }) => E.createEvent(deps, body),
+  }),
+  def({
+    method: 'GET',
+    path: '/api/events/:eventId/admin',
+    auth: 'admin',
+    rate: [tokenCheck],
+    status: 200,
+    handler: ({ deps, params, cred }) => E.getEventAdminView(deps, params.eventId, cred),
+  }),
+  def({
+    method: 'PATCH',
+    path: '/api/events/:eventId/admin',
+    auth: 'admin',
+    body: updateEventSchema,
+    rate: [tokenCheck],
+    status: 200,
+    handler: ({ deps, params, cred, body }) => E.updateEvent(deps, params.eventId, cred, body),
+  }),
+  def({
+    method: 'POST',
+    path: '/api/events/:eventId/communities',
+    auth: 'admin',
+    body: addCommunitySchema,
+    rate: [tokenCheck],
+    status: 201,
+    handler: ({ deps, params, cred, body }) => E.addCommunity(deps, params.eventId, cred, body),
   }),
 ];

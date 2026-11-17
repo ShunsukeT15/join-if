@@ -24,9 +24,27 @@ export const createRoomSchema = z.strictObject({
 
 export const updateSettingsSchema = z.strictObject({
   title: text(100).optional(),
+  communityName: text(50).optional(),
   deadlineText: text(50).optional(),
   message: text(500).optional(),
   deadlineAt,
+});
+
+export const createEventSchema = z.strictObject({
+  title: text(100),
+  message: text(500).optional(),
+});
+
+export const updateEventSchema = z.strictObject({
+  title: text(100).optional(),
+  message: text(500).optional(),
+});
+
+export const addCommunitySchema = z.strictObject({
+  name: text(50),
+  inviteMode: z.enum(['individual', 'group']).optional(),
+  deadlineAt,
+  message: text(500).optional(),
 });
 
 export const groupClaimSchema = z.strictObject({

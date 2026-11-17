@@ -4,6 +4,7 @@ import type {
   Answer,
   AuditEvent,
   Choice,
+  Event,
   InviteMode,
   Member,
   Pattern,
@@ -13,8 +14,18 @@ import type {
 } from '../../../domain/types.js';
 import type { SqlClient, SqlPool } from './pgClient.js';
 
+interface EventRow {
+  id: string;
+  title: string;
+  message: string;
+  admin_token_hash: string;
+  created_at: Date;
+  purge_after: Date;
+}
 interface RoomRow {
   id: string;
+  event_id: string | null;
+  community_name: string | null;
   title: string;
   deadline_text: string;
   message: string;
@@ -49,8 +60,19 @@ interface AnswerRow {
 const toDate = (v: Date | string): Date => (v instanceof Date ? v : new Date(v));
 const toDateOrNull = (v: Date | string | null): Date | null => (v === null ? null : toDate(v));
 
+const event = (r: EventRow): Event => ({
+  id: r.id,
+  title: r.title,
+  message: r.message,
+  adminTokenHash: r.admin_token_hash,
+  createdAt: toDate(r.created_at),
+  purgeAfter: toDate(r.purge_after),
+});
+
 const room = (r: RoomRow): Room => ({
   id: r.id,
+  eventId: r.event_id,
+  communityName: r.community_name,
   title: r.title,
   deadlineText: r.deadline_text,
   message: r.message,
@@ -91,12 +113,46 @@ const MEMBER_COLS =
 
 function makeTx(db: SqlClient): Tx {
   return {
+    events: {
+      async insert(e) {
+        await db.query(
+          `insert into events (id, title, message, admin_token_hash, created_at, purge_after) values ($1,$2,$3,$4,$5,$6)`,
+          [e.id, e.title, e.message, e.adminTokenHash, e.createdAt, e.purgeAfter],
+        );
+      },
+      async findById(id) {
+        const { rows } = await db.query<EventRow>('select * from events where id = $1', [id]);
+        return rows[0] ? event(rows[0]) : null;
+      },
+      async update(e) {
+        const { rowCount } = await db.query(`update events set title=$2, message=$3, purge_after=$4 where id=$1`, [
+          e.id,
+          e.title,
+          e.message,
+          e.purgeAfter,
+        ]);
+        if (rowCount === 0) throw notFound();
+      },
+      async deleteExpired(now) {
+        const { rowCount } = await db.query(
+          `delete from events e
+           where e.purge_after <= $1
+              or (e.created_at <= $1 - interval '30 days' and not exists (select 1 from rooms r where r.event_id = e.id))`,
+          [now],
+        );
+        return rowCount;
+      },
+    },
     rooms: {
+      async listByEvent(eventId) {
+        const { rows } = await db.query<RoomRow>('select * from rooms where event_id = $1 order by created_at, id', [eventId]);
+        return rows.map(room);
+      },
       async insert(r) {
         await db.query(
           `insert into rooms (id, title, deadline_text, message, status, admin_token_hash, created_at, closed_at, purge_after,
-             invite_mode, group_token_hash, group_token_enc, deadline_at)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+             invite_mode, group_token_hash, group_token_enc, deadline_at, event_id, community_name)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
           [
             r.id,
             r.title,
@@ -111,6 +167,8 @@ function makeTx(db: SqlClient): Tx {
             r.groupTokenHash,
             r.groupTokenEnc,
             r.deadlineAt,
+            r.eventId,
+            r.communityName,
           ],
         );
       },
@@ -121,9 +179,21 @@ function makeTx(db: SqlClient): Tx {
       async update(r) {
         const { rowCount } = await db.query(
           `update rooms set title=$2, deadline_text=$3, message=$4, status=$5, closed_at=$6, purge_after=$7,
-             group_token_hash=$8, group_token_enc=$9, deadline_at=$10
+             group_token_hash=$8, group_token_enc=$9, deadline_at=$10, community_name=$11
            where id=$1`,
-          [r.id, r.title, r.deadlineText, r.message, r.status, r.closedAt, r.purgeAfter, r.groupTokenHash, r.groupTokenEnc, r.deadlineAt],
+          [
+            r.id,
+            r.title,
+            r.deadlineText,
+            r.message,
+            r.status,
+            r.closedAt,
+            r.purgeAfter,
+            r.groupTokenHash,
+            r.groupTokenEnc,
+            r.deadlineAt,
+            r.communityName,
+          ],
         );
         if (rowCount === 0) throw notFound();
       },
@@ -286,6 +356,14 @@ export class PostgresUnitOfWork implements UnitOfWork {
       const { rows } = await conn.query<RoomRow>('select * from rooms where id = $1 for update', [roomId]);
       if (!rows[0]) throw notFound();
       return fn(makeTx(conn), room(rows[0]));
+    });
+  }
+
+  withEventLock<T>(eventId: string, fn: (tx: Tx, event: Event) => Promise<T>): Promise<T> {
+    return this.inTransaction(async (conn) => {
+      const { rows } = await conn.query<EventRow>('select * from events where id = $1 for update', [eventId]);
+      if (!rows[0]) throw notFound();
+      return fn(makeTx(conn), event(rows[0]));
     });
   }
 

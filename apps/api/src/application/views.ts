@@ -21,6 +21,7 @@ export function roomInfo(room: Room): RoomInfo {
     status: room.status,
     inviteMode: room.inviteMode,
     deadlineAt: room.deadlineAt ? room.deadlineAt.toISOString() : null,
+    communityName: room.communityName,
   };
 }
 

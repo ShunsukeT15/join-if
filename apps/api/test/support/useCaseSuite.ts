@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { UnitOfWork } from '../../src/application/ports/persistence.js';
 import * as A from '../../src/application/usecases/admin.js';
 import { closeDueRooms } from '../../src/application/usecases/closing.js';
+import * as E from '../../src/application/usecases/event.js';
 import * as G from '../../src/application/usecases/group.js';
 import * as M from '../../src/application/usecases/member.js';
 import { AppError } from '../../src/domain/errors.js';
@@ -47,6 +48,7 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
         status: 'open',
         inviteMode: 'individual',
         deadlineAt: null,
+        communityName: null,
       });
       expect(v.members).toEqual([]);
       expect(v.result).toBeNull();
@@ -401,6 +403,109 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
       expect((await A.updateSettings(d, r.roomId, admin(r.adminToken), { title: 'x' })).room.deadlineAt).toBeNull();
       d.clock.advance(5 * 3_600_000);
       expect(await closeDueRooms(d)).toBe(0);
+    });
+  });
+  describe(`events with communities [${label}]`, () => {
+    let d: TestDeps;
+    let eventId: string;
+    let token: string;
+
+    beforeEach(async () => {
+      d = makeDeps(await makeUow());
+      ({ eventId, adminToken: token } = await E.createEvent(d, { title: '太郎＆花子 結婚式', message: 'よろしく' }));
+    });
+
+    const community = async (name: string, members: string[]) => {
+      const { roomId } = await E.addCommunity(d, eventId, admin(token), { name });
+      const tokens: Record<string, string> = {};
+      for (const m of members) {
+        const { member: added } = await A.addMember(d, roomId, admin(token), { name: m });
+        tokens[m] = (await M.claimInvite(d, roomId, invite(added.inviteToken))).memberToken;
+      }
+      return { roomId, tokens };
+    };
+
+    it('the event token manages every community; members see only their community', async () => {
+      const a = await community('新郎友人', ['A1', 'A2']);
+      const b = await community('新婦同僚', ['B1']);
+      const view = await A.getAdminView(d, a.roomId, admin(token));
+      expect(view.event).toEqual({ id: eventId, title: '太郎＆花子 結婚式' });
+      expect(view.room).toMatchObject({ title: '太郎＆花子 結婚式', communityName: '新郎友人', message: 'よろしく' });
+
+      const mv = await M.getMemberView(d, a.roomId, member(a.tokens.A1));
+      expect(mv.members.map((m) => m.name)).toEqual(['A1', 'A2']);
+      expect(await code(M.getMemberView(d, b.roomId, member(a.tokens.A1)))).toBe('not_found');
+    });
+
+    it('aggregates per community and in total; each community closes on its own', async () => {
+      const a = await community('新郎友人', ['A1', 'A2']);
+      const b = await community('新婦同僚', ['B1', 'B2']);
+      await M.saveAnswer(d, a.roomId, member(a.tokens.A1), { choice: 'yes' });
+      await M.saveAnswer(d, a.roomId, member(a.tokens.A2), { choice: 'no' });
+      await M.saveAnswer(d, b.roomId, member(b.tokens.B1), { choice: 'yes' });
+      await A.closeRoom(d, a.roomId, admin(token));
+
+      const ev = await E.getEventAdminView(d, eventId, admin(token));
+      expect(ev.communities.map((c) => [c.name, c.status, c.memberCount, c.answeredCount, c.attendingCount])).toEqual([
+        ['新郎友人', 'closed', 2, 2, 1],
+        ['新婦同僚', 'open', 2, 1, null],
+      ]);
+      expect(ev.totals).toEqual({ memberCount: 4, answeredCount: 3, attendingCount: 1, closedCount: 1 });
+      expect(ev.attendees).toEqual([{ name: 'A1', community: '新郎友人' }]);
+      // Open communities never reveal who will attend.
+      expect(JSON.stringify(ev)).not.toContain('B1');
+    });
+
+    it('auto-closes communities past their deadline when the event is viewed', async () => {
+      const { roomId } = await E.addCommunity(d, eventId, admin(token), {
+        name: 'サークル',
+        deadlineAt: new Date(d.clock.now().getTime() + 3_600_000).toISOString(),
+      });
+      d.clock.advance(2 * 3_600_000);
+      const ev = await E.getEventAdminView(d, eventId, admin(token));
+      expect(ev.communities.find((c) => c.roomId === roomId)?.status).toBe('closed');
+    });
+
+    it('renaming the event updates every community title', async () => {
+      const a = await community('新郎友人', ['A1']);
+      await E.updateEvent(d, eventId, admin(token), { title: '披露宴' });
+      expect((await M.getMemberView(d, a.roomId, member(a.tokens.A1))).room.title).toBe('披露宴');
+    });
+
+    it('community names: unique, editable from the community, title not editable there', async () => {
+      const a = await community('新郎友人', []);
+      expect(await code(E.addCommunity(d, eventId, admin(token), { name: '新郎友人' }))).toBe('validation');
+      expect(await code(A.updateSettings(d, a.roomId, admin(token), { title: 'x' }))).toBe('validation');
+      const v = await A.updateSettings(d, a.roomId, admin(token), { communityName: '大学の友人' });
+      expect(v.room.communityName).toBe('大学の友人');
+      const standalone = await A.createRoom(d, { title: 'single' });
+      expect(await code(A.updateSettings(d, standalone.roomId, admin(standalone.adminToken), { communityName: 'x' }))).toBe('validation');
+    });
+
+    it('caps communities per event', async () => {
+      for (let i = 0; i < 20; i++) await E.addCommunity(d, eventId, admin(token), { name: `c${i}` });
+      expect(await code(E.addCommunity(d, eventId, admin(token), { name: 'over' }))).toBe('validation');
+    });
+
+    it('rejects other tokens', async () => {
+      const other = await E.createEvent(d, { title: 'other' });
+      const room = await A.createRoom(d, { title: 'single' });
+      expect(await code(E.getEventAdminView(d, eventId, admin(other.adminToken)))).toBe('not_found');
+      expect(await code(E.getEventAdminView(d, eventId, admin(room.adminToken)))).toBe('not_found');
+      expect(await code(E.addCommunity(d, other.eventId, admin(token), { name: 'x' }))).toBe('not_found');
+      expect(await code(E.getEventAdminView(d, 'nope', admin(token)))).toBe('not_found');
+    });
+
+    it('purges events after a year, and empty events after 30 days', async () => {
+      const empty = await E.createEvent(d, { title: 'empty' });
+      await community('c', ['A1']);
+      d.clock.advanceDays(31);
+      await A.purgeExpiredRooms(d);
+      expect(await code(E.getEventAdminView(d, empty.eventId, admin(empty.adminToken)))).toBe('not_found');
+      expect((await E.getEventAdminView(d, eventId, admin(token))).communities).toHaveLength(1);
+      d.clock.advanceDays(340);
+      await A.purgeExpiredRooms(d);
+      expect(await code(E.getEventAdminView(d, eventId, admin(token)))).toBe('not_found');
     });
   });
 });

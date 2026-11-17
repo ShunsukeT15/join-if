@@ -110,7 +110,9 @@ export function createApp(opts: AppOptions) {
       try {
         const roomId = c.req.param('roomId') ?? '';
         const memberId = c.req.param('memberId') ?? '';
+        const eventId = c.req.param('eventId') ?? '';
         if (route.path.includes(':roomId') && !ROOM_ID_PATTERN.test(roomId)) throw notFound();
+        if (route.path.includes(':eventId') && !ROOM_ID_PATTERN.test(eventId)) throw notFound();
         if (route.path.includes(':memberId') && !UUID_PATTERN.test(memberId)) throw notFound();
 
         const cred: Credential = route.auth
@@ -125,7 +127,7 @@ export function createApp(opts: AppOptions) {
         }
 
         const body = await readBody(c, route.body);
-        const result = await route.handler({ deps: opts.deps, params: { roomId, memberId }, cred, body });
+        const result = await route.handler({ deps: opts.deps, params: { roomId, memberId, eventId }, cred, body });
         if (route.status === 204) return c.body(null, 204);
         return c.json(result as object, route.status);
       } catch (err) {

@@ -1,5 +1,5 @@
 import { notFound } from '../domain/errors.js';
-import type { Member, Room } from '../domain/types.js';
+import type { Event, Member, Room } from '../domain/types.js';
 import type { Tx } from './ports/persistence.js';
 import type { TokenService } from './ports/services.js';
 
@@ -79,4 +79,12 @@ export async function authorize<K extends CredentialKind>(
     }
   }
   throw notFound();
+}
+
+/** Event admin: the event's admin token (the only credential accepted on event routes). */
+export function authorizeEvent(tokens: TokenService, event: Event, credential: Credential): void {
+  if (credential.kind !== 'admin') throw notFound();
+  const token = credential.token;
+  if (!token || token.length > 200) throw notFound();
+  if (tokens.hash(token) !== event.adminTokenHash) throw notFound();
 }

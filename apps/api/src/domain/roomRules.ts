@@ -39,6 +39,15 @@ export function normalizeMemberName(name: string): string {
   return v;
 }
 
+export function normalizeCommunityName(name: string): string {
+  const v = name.trim();
+  if (!v) throw validation({ communityName: 'コミュニティ名を入力してください' });
+  if ([...v].length > LIMITS.communityNameMax) {
+    throw validation({ communityName: `${LIMITS.communityNameMax}文字以内で入力してください` });
+  }
+  return v;
+}
+
 const MAX_DEADLINE_DAYS = 365;
 
 /**

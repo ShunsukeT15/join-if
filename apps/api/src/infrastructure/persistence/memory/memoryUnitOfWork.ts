@@ -1,8 +1,9 @@
 import type { Tx, UnitOfWork } from '../../../application/ports/persistence.js';
 import { notFound } from '../../../domain/errors.js';
-import type { Answer, AuditEvent, Member, Result, Room } from '../../../domain/types.js';
+import type { Answer, AuditEvent, Event, Member, Result, Room } from '../../../domain/types.js';
 
 interface State {
+  events: Map<string, Event>;
   rooms: Map<string, Room>;
   members: Map<string, Member>;
   answers: Map<string, Answer>;
@@ -12,6 +13,7 @@ interface State {
 }
 
 const emptyState = (): State => ({
+  events: new Map(),
   rooms: new Map(),
   members: new Map(),
   answers: new Map(),
@@ -35,10 +37,43 @@ function makeTx(s: State): Tx {
     s.rooms.delete(roomId);
   };
 
+  const DAY = 24 * 60 * 60 * 1000;
   return {
+    events: {
+      async insert(event) {
+        if (s.events.has(event.id)) throw new Error('duplicate event id');
+        s.events.set(event.id, clone(event));
+      },
+      async findById(id) {
+        const e = s.events.get(id);
+        return e ? clone(e) : null;
+      },
+      async update(event) {
+        if (!s.events.has(event.id)) throw notFound();
+        s.events.set(event.id, clone(event));
+      },
+      async deleteExpired(now) {
+        const hasRooms = (id: string) => [...s.rooms.values()].some((r) => r.eventId === id);
+        const expired = [...s.events.values()].filter(
+          (e) => e.purgeAfter <= now || (!hasRooms(e.id) && e.createdAt.getTime() <= now.getTime() - 30 * DAY),
+        );
+        for (const e of expired) {
+          for (const r of [...s.rooms.values()]) if (r.eventId === e.id) deleteRoomCascade(r.id);
+          s.events.delete(e.id);
+        }
+        return expired.length;
+      },
+    },
     rooms: {
+      async listByEvent(eventId) {
+        return [...s.rooms.values()]
+          .filter((r) => r.eventId === eventId)
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+          .map(clone);
+      },
       async insert(room) {
         if (s.rooms.has(room.id)) throw new Error('duplicate room id');
+        if (room.eventId !== null && !s.events.has(room.eventId)) throw notFound();
         s.rooms.set(room.id, clone(room));
       },
       async findById(id) {
@@ -185,6 +220,14 @@ export class MemoryUnitOfWork implements UnitOfWork {
       const room = await tx.rooms.findById(roomId);
       if (!room) throw notFound();
       return fn(tx, room);
+    });
+  }
+
+  withEventLock<T>(eventId: string, fn: (tx: Tx, event: Event) => Promise<T>): Promise<T> {
+    return this.transaction(async (tx) => {
+      const event = await tx.events.findById(eventId);
+      if (!event) throw notFound();
+      return fn(tx, event);
     });
   }
 

@@ -2,8 +2,21 @@ export type RoomStatus = 'open' | 'closed';
 export type Choice = 'yes' | 'no' | 'cond';
 export type InviteMode = 'individual' | 'group';
 
+/** An organizer's event grouping several communities (rooms). Only the organizer sees it. */
+export interface Event {
+  id: string;
+  title: string;
+  message: string;
+  adminTokenHash: string;
+  createdAt: Date;
+  purgeAfter: Date;
+}
+
 export interface Room {
   id: string;
+  /** Set when the room is a community of an event; its admin token is the event's. */
+  eventId: string | null;
+  communityName: string | null;
   title: string;
   deadlineText: string;
   message: string;
@@ -76,7 +89,8 @@ export type AuditAction =
   | 'room_closed'
   | 'room_reopened'
   | 'settings_changed'
-  | 'group_token_reissued';
+  | 'group_token_reissued'
+  | 'community_created';
 
 export interface AuditEvent {
   roomId: string;

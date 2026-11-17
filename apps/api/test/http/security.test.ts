@@ -105,8 +105,11 @@ async function makeFixture() {
   const otherPending = await h.call('POST', `/api/rooms/${other.roomId}/members`, { tokens: { admin: other.adminToken }, body: { name: 'Q' } });
   const groupRoom = await h.setupGroupRoom(['A', 'B'], 'g', ['P']);
   const groupOther = await h.setupGroupRoom(['Z'], 'g-other', ['Q']);
+  const event = await h.setupEvent(['A', 'B'], 'e');
+  const eventOther = await h.setupEvent(['Z'], 'e-other');
   return {
     h,
+    event: { room: event, other: eventOther },
     indiv: { room, other, pendingInvite: pending.json.member.inviteToken as string, otherPendingInvite: otherPending.json.member.inviteToken as string },
     group: { room: groupRoom, other: groupOther },
   };
@@ -117,8 +120,9 @@ type Kind = 'admin' | 'invite' | 'member' | 'group';
 /** The rooms a route is exercised against: group routes need group-mode rooms. */
 function ctxFor(f: Fixture, path: string) {
   const isGroup = path.includes('/group');
-  const room = isGroup ? f.group.room : f.indiv.room;
-  const other = isGroup ? f.group.other : f.indiv.other;
+  const isEvent = path.startsWith('/api/events/');
+  const room = isEvent ? f.event.room : isGroup ? f.group.room : f.indiv.room;
+  const other = isEvent ? f.event.other : isGroup ? f.group.other : f.indiv.other;
   const tokenOf = (kind: Kind, which: 'room' | 'other'): string => {
     const r = which === 'room' ? room : other;
     if (kind === 'admin') return r.adminToken;
@@ -147,6 +151,10 @@ const SAMPLE_BODIES: Record<string, (c: Ctx) => unknown> = {
   'POST /api/rooms/:roomId/group/reissue': () => undefined,
   'GET /api/rooms/:roomId/group': () => undefined,
   'POST /api/rooms/:roomId/group/claim': (c) => ({ memberId: c.unpicked('room') }),
+  'POST /api/events': () => ({ title: 'e' }),
+  'GET /api/events/:eventId/admin': () => undefined,
+  'PATCH /api/events/:eventId/admin': () => ({ title: 'changed' }),
+  'POST /api/events/:eventId/communities': () => ({ name: 'new community' }),
 };
 
 describe('authorization: every protected route rejects bad credentials without side effects', () => {
@@ -168,7 +176,7 @@ describe('authorization: every protected route rejects bad credentials without s
       });
 
       const path = (roomId: string, memberId: string) =>
-        route.path.replace(':roomId', roomId).replace(':memberId', memberId);
+        route.path.replace(':roomId', roomId).replace(':eventId', roomId).replace(':memberId', memberId);
 
       const expectRejected = async (init: { tokens: Record<string, string>; roomId?: string; memberId?: string; body?: unknown }) => {
         const before = f.h.uow.dump();
@@ -227,6 +235,24 @@ describe('authorization: every protected route rejects bad credentials without s
       });
     });
   }
+
+  it('event tokens reach only their own event and its communities', async () => {
+    const f = await makeFixture();
+    const ev = f.event.room;
+    const other = f.event.other;
+    // The event token manages its own communities…
+    expect((await f.h.call('GET', `/api/rooms/${ev.communityRoomId}/admin`, { tokens: { admin: ev.adminToken } })).status).toBe(200);
+    // …but not another event's communities, nor standalone rooms.
+    expect((await f.h.call('GET', `/api/rooms/${other.communityRoomId}/admin`, { tokens: { admin: ev.adminToken } })).status).toBe(404);
+    expect((await f.h.call('GET', `/api/rooms/${f.indiv.room.roomId}/admin`, { tokens: { admin: ev.adminToken } })).status).toBe(404);
+    // A standalone room's admin token cannot open an event.
+    expect((await f.h.call('GET', `/api/events/${ev.eventId}/admin`, { tokens: { admin: f.indiv.room.adminToken } })).status).toBe(404);
+    // Members never see event-level data.
+    const me = await f.h.call('GET', `/api/rooms/${ev.communityRoomId}/me`, { tokens: { member: ev.members.A!.token } });
+    expect(me.status).toBe(200);
+    expect(JSON.stringify(me.json)).not.toMatch(/"event"|communities|attendees|totals/);
+    expect(me.json.room.communityName).toBe('コミュニティ1');
+  });
 
   it('group routes reject individual-mode rooms, and individual claim rejects group rooms', async () => {
     const f = await makeFixture();

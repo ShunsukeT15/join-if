@@ -1,4 +1,4 @@
-import type { Answer, AuditEvent, Member, Result, Room } from '../../domain/types.js';
+import type { Answer, AuditEvent, Event, Member, Result, Room } from '../../domain/types.js';
 
 /**
  * Persistence ports. Every repository method is scoped by room where possible so
@@ -9,9 +9,22 @@ export interface RoomRepository {
   insert(room: Room): Promise<void>;
   findById(id: string): Promise<Room | null>;
   update(room: Room): Promise<void>;
+  /** Communities of an event, in creation order. */
+  listByEvent(eventId: string): Promise<Room[]>;
   /** Ids of open rooms whose automatic deadline has passed. */
   findOpenDue(now: Date): Promise<string[]>;
   /** Deletes rooms whose purgeAfter is past (members/answers/results/audit cascade). */
+  deleteExpired(now: Date): Promise<number>;
+}
+
+export interface EventRepository {
+  insert(event: Event): Promise<void>;
+  findById(id: string): Promise<Event | null>;
+  update(event: Event): Promise<void>;
+  /**
+   * Deletes events past purgeAfter (their rooms cascade), and events left without any
+   * room for 30 days (e.g. all communities already purged).
+   */
   deleteExpired(now: Date): Promise<number>;
 }
 
@@ -51,6 +64,7 @@ export interface AuditRepository {
 }
 
 export interface Tx {
+  events: EventRepository;
   rooms: RoomRepository;
   members: MemberRepository;
   answers: AnswerRepository;
@@ -69,4 +83,6 @@ export interface UnitOfWork {
    * Throws not_found if the room does not exist.
    */
   withRoomLock<T>(roomId: string, fn: (tx: Tx, room: Room) => Promise<T>): Promise<T>;
+  /** Same as withRoomLock, for an event row (adding communities). */
+  withEventLock<T>(eventId: string, fn: (tx: Tx, event: Event) => Promise<T>): Promise<T>;
 }

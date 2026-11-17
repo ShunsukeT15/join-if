@@ -16,6 +16,9 @@ export const LIMITS = {
   nameMax: 50,
   /** Max OR-patterns in one conditional answer. */
   maxPatterns: 5,
+  /** Max communities (rooms) in one event. */
+  maxCommunities: 20,
+  communityNameMax: 50,
 } as const;
 
 export const HEADERS = {
@@ -33,6 +36,8 @@ export interface RoomInfo {
   inviteMode: InviteMode;
   /** When set, answers stop at this time and the room closes automatically (ISO 8601). */
   deadlineAt: string | null;
+  /** Set when the room is a community of an event (e.g. "大学の友人"). */
+  communityName: string | null;
 }
 
 export interface ResultDto {
@@ -99,7 +104,10 @@ export interface CreateRoomRequest {
 }
 
 export interface UpdateSettingsRequest {
+  /** Standalone rooms only (an event's communities take the event title). */
   title?: string;
+  /** Communities of an event only. */
+  communityName?: string;
   deadlineText?: string;
   message?: string;
   /** ISO 8601 in the future, or null to remove the automatic deadline. */
@@ -134,6 +142,67 @@ export interface AdminViewResponse {
   result: ResultDto | null;
   /** group mode only: the shared URL token. */
   groupToken?: string;
+  /** Present when this room is a community of an event (admin view only). */
+  event?: { id: string; title: string };
+}
+
+// ---- Events: several communities (rooms) under one organizer ----
+
+export interface EventInfo {
+  title: string;
+  message: string;
+}
+
+export interface CommunitySummary {
+  roomId: string;
+  name: string;
+  inviteMode: InviteMode;
+  status: RoomStatus;
+  deadlineAt: string | null;
+  memberCount: number;
+  answeredCount: number;
+  /** Number of attendees once the community is closed; null while open. */
+  attendingCount: number | null;
+}
+
+export interface EventAdminViewResponse {
+  event: EventInfo;
+  communities: CommunitySummary[];
+  totals: {
+    memberCount: number;
+    answeredCount: number;
+    /** Sum over closed communities. */
+    attendingCount: number;
+    closedCount: number;
+  };
+  /** Attendees of closed communities, in community order. */
+  attendees: { name: string; community: string }[];
+}
+
+export interface CreateEventRequest {
+  title: string;
+  message?: string;
+}
+
+export interface CreateEventResponse {
+  eventId: string;
+  adminToken: string;
+}
+
+export interface UpdateEventRequest {
+  title?: string;
+  message?: string;
+}
+
+export interface AddCommunityRequest {
+  name: string;
+  inviteMode?: InviteMode;
+  deadlineAt?: string | null;
+  message?: string;
+}
+
+export interface AddCommunityResponse {
+  roomId: string;
 }
 
 export interface GroupViewResponse {

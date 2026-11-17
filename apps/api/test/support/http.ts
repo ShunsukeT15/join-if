@@ -75,5 +75,25 @@ export function makeHarness(opts: { rateLimiter?: RateLimiter } = {}) {
     return { roomId, adminToken, groupToken, members, unpicked };
   }
 
-  return { app, uow, deps, call, setupRoom, setupGroupRoom };
+  /** Creates an event with one community (individual mode) whose members are all claimed. */
+  async function setupEvent(names: string[], title = 'イベント') {
+    const created = await call('POST', '/api/events', { body: { title } });
+    const eventId: string = created.json.eventId;
+    const adminToken: string = created.json.adminToken;
+    const community = await call('POST', `/api/events/${eventId}/communities`, {
+      tokens: { admin: adminToken },
+      body: { name: 'コミュニティ1' },
+    });
+    const communityRoomId: string = community.json.roomId;
+    const members: Record<string, { id: string; token: string; inviteToken: string }> = {};
+    for (const name of names) {
+      const added = await call('POST', `/api/rooms/${communityRoomId}/members`, { tokens: { admin: adminToken }, body: { name } });
+      const inviteToken: string = added.json.member.inviteToken;
+      const claimed = await call('POST', `/api/rooms/${communityRoomId}/claim`, { tokens: { invite: inviteToken } });
+      members[name] = { id: added.json.member.id, token: claimed.json.memberToken, inviteToken };
+    }
+    return { roomId: eventId, eventId, adminToken, communityRoomId, members };
+  }
+
+  return { app, uow, deps, call, setupRoom, setupGroupRoom, setupEvent };
 }
