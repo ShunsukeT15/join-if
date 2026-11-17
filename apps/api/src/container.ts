@@ -2,6 +2,7 @@ import type { Deps } from './application/deps.js';
 import type { UnitOfWork } from './application/ports/persistence.js';
 import type { RateLimiter } from './application/ports/services.js';
 import { purgeExpiredRooms } from './application/usecases/admin.js';
+import { DEFAULT_RETENTION, type RetentionPolicy } from './domain/constants.js';
 import { closeDueRooms } from './application/usecases/closing.js';
 import { generateEncryptionKey, NodeIdGenerator, NodeTokenService } from './infrastructure/crypto/nodeTokenService.js';
 import { MemoryUnitOfWork } from './infrastructure/persistence/memory/memoryUnitOfWork.js';
@@ -21,6 +22,14 @@ export interface Config {
   rateLimit: 'off' | 'memory' | 'postgres';
   purgeIntervalMs: number;
   originVerify: { header: string; value: string } | undefined;
+  retention: RetentionPolicy;
+}
+
+function days(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 3650) throw new Error(`${name} must be an integer between 1 and 3650`);
+  return n;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -57,6 +66,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: env.TRUST_PROXY === 'true',
     rateLimit,
     purgeIntervalMs: Number(env.PURGE_INTERVAL_MS ?? 6 * 60 * 60 * 1000),
+    retention: {
+      afterCloseDays: days(env.RETENTION_AFTER_CLOSE_DAYS, DEFAULT_RETENTION.afterCloseDays, 'RETENTION_AFTER_CLOSE_DAYS'),
+      unclosedDays: days(env.RETENTION_UNCLOSED_DAYS, DEFAULT_RETENTION.unclosedDays, 'RETENTION_UNCLOSED_DAYS'),
+    },
     originVerify: env.ORIGIN_VERIFY_SECRET
       ? { header: env.ORIGIN_VERIFY_HEADER ?? 'X-Origin-Verify', value: env.ORIGIN_VERIFY_SECRET }
       : undefined,
@@ -105,6 +118,7 @@ export async function buildContainer(config: Config): Promise<Container> {
     tokens: new NodeTokenService(config.tokenEncKey),
     ids: new NodeIdGenerator(),
     clock: new SystemClock(),
+    retention: config.retention,
   };
 
   return {

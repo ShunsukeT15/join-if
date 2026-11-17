@@ -7,7 +7,7 @@ import type {
   ReissueResponse,
   UpdateSettingsRequest,
 } from '@himitsu/contracts';
-import { addDays, LIMITS, RETENTION_AFTER_CLOSE_DAYS, RETENTION_UNCLOSED_DAYS } from '../../domain/constants.js';
+import { addDays, LIMITS } from '../../domain/constants.js';
 import { conflict, notFound, roomClosed, validation } from '../../domain/errors.js';
 import {
   acceptsChanges,
@@ -84,7 +84,7 @@ export async function insertNewRoom(deps: Deps, tx: Tx, input: NewRoomInput): Pr
     deadlineAt,
     createdAt,
     closedAt: null,
-    purgeAfter: addDays(now, RETENTION_UNCLOSED_DAYS),
+    purgeAfter: addDays(now, deps.retention.unclosedDays),
   };
   await tx.rooms.insert(room);
   return id;
@@ -270,8 +270,8 @@ export async function reopenRoom(deps: Deps, roomId: string, cred: Credential): 
 
     const now = deps.clock.now();
     await tx.results.delete(roomId);
-    const unclosedLimit = addDays(room.createdAt, RETENTION_UNCLOSED_DAYS);
-    const minimum = addDays(now, RETENTION_AFTER_CLOSE_DAYS);
+    const unclosedLimit = addDays(room.createdAt, deps.retention.unclosedDays);
+    const minimum = addDays(now, deps.retention.afterCloseDays);
     const updated: Room = {
       ...room,
       status: 'open',
@@ -285,12 +285,19 @@ export async function reopenRoom(deps: Deps, roomId: string, cred: Credential): 
   });
 }
 
-/** §7.5: delete rooms past their purge date, and events that expired or have no rooms left. */
+/**
+ * §7.5: delete data past the retention policy. The policy is applied at purge time, so a
+ * changed retention period also applies to existing rooms.
+ */
 export async function purgeExpiredRooms(deps: Deps): Promise<number> {
   return deps.uow.transaction(async (tx) => {
     const now = deps.clock.now();
-    const rooms = await tx.rooms.deleteExpired(now);
-    await tx.events.deleteExpired(now);
+    const cutoff = {
+      closedBefore: addDays(now, -deps.retention.afterCloseDays),
+      createdBefore: addDays(now, -deps.retention.unclosedDays),
+    };
+    const rooms = await tx.rooms.deleteExpired(cutoff);
+    await tx.events.deleteExpired(cutoff);
     return rooms;
   });
 }

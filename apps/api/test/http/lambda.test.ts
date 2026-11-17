@@ -63,3 +63,11 @@ describe('lambda close-due event', () => {
     expect(await handler({ action: 'close-due' }, {} as never)).toEqual({ closed: 0 });
   });
 });
+
+describe('lambda operator actions', () => {
+  it('stats, delete-test-data and a guarded reset', async () => {
+    expect(await handler({ action: 'stats' }, {} as never)).toMatchObject({ rooms: expect.any(Number) });
+    expect(await handler({ action: 'delete-test-data' }, {} as never)).toMatchObject({ deletedRooms: expect.any(Number) });
+    await expect(handler({ action: 'reset-all' }, {} as never)).rejects.toThrow(/DELETE ALL DATA/);
+  });
+});

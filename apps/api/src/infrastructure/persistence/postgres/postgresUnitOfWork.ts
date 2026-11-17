@@ -113,7 +113,35 @@ const MEMBER_COLS =
 
 function makeTx(db: SqlClient): Tx {
   return {
+    ops: {
+      async counts() {
+        const { rows } = await db.query<{ events: number; rooms: number; open_rooms: number; members: number; answers: number }>(
+          `select (select count(*)::int from events) as events,
+                  (select count(*)::int from rooms) as rooms,
+                  (select count(*)::int from rooms where status = 'open') as open_rooms,
+                  (select count(*)::int from members) as members,
+                  (select count(*)::int from answers) as answers`,
+        );
+        const r = rows[0]!;
+        return { events: r.events, rooms: r.rooms, openRooms: r.open_rooms, members: r.members, answers: r.answers };
+      },
+      async findByTitlePrefix(prefix) {
+        // Escape LIKE wildcards so the prefix is matched literally.
+        const pattern = prefix.replace(/[\\%_]/g, (c) => `\\${c}`) + '%';
+        const rooms = await db.query<{ id: string }>(`select id from rooms where event_id is null and title like $1`, [pattern]);
+        const events = await db.query<{ id: string }>(`select id from events where title like $1`, [pattern]);
+        return { roomIds: rooms.rows.map((r) => r.id), eventIds: events.rows.map((r) => r.id) };
+      },
+      async deleteAll() {
+        const ev = await db.query('delete from events');
+        const rm = await db.query('delete from rooms');
+        return { events: ev.rowCount, rooms: rm.rowCount };
+      },
+    },
     events: {
+      async delete(id) {
+        await db.query('delete from events where id = $1', [id]);
+      },
       async insert(e) {
         await db.query(
           `insert into events (id, title, message, admin_token_hash, created_at, purge_after) values ($1,$2,$3,$4,$5,$6)`,
@@ -133,17 +161,20 @@ function makeTx(db: SqlClient): Tx {
         ]);
         if (rowCount === 0) throw notFound();
       },
-      async deleteExpired(now) {
+      async deleteExpired({ closedBefore, createdBefore }) {
         const { rowCount } = await db.query(
           `delete from events e
-           where e.purge_after <= $1
-              or (e.created_at <= $1 - interval '30 days' and not exists (select 1 from rooms r where r.event_id = e.id))`,
-          [now],
+           where e.created_at <= $2
+              or (e.created_at <= $1 and not exists (select 1 from rooms r where r.event_id = e.id))`,
+          [closedBefore, createdBefore],
         );
         return rowCount;
       },
     },
     rooms: {
+      async delete(id) {
+        await db.query('delete from rooms where id = $1', [id]);
+      },
       async listByEvent(eventId) {
         const { rows } = await db.query<RoomRow>('select * from rooms where event_id = $1 order by created_at, id', [eventId]);
         return rows.map(room);
@@ -204,8 +235,13 @@ function makeTx(db: SqlClient): Tx {
         );
         return rows.map((r) => r.id);
       },
-      async deleteExpired(now) {
-        const { rowCount } = await db.query('delete from rooms where purge_after <= $1', [now]);
+      async deleteExpired({ closedBefore, createdBefore }) {
+        const { rowCount } = await db.query(
+          `delete from rooms
+           where (status = 'closed' and closed_at <= $1)
+              or (status = 'open' and created_at <= $2 and (closed_at is null or closed_at <= $1))`,
+          [closedBefore, createdBefore],
+        );
         return rowCount;
       },
     },

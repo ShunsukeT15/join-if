@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type { CredentialKind } from '../../application/authorize.js';
 import * as A from '../../application/usecases/admin.js';
+import * as D from '../../application/usecases/deletion.js';
 import * as E from '../../application/usecases/event.js';
 import * as G from '../../application/usecases/group.js';
 import * as M from '../../application/usecases/member.js';
@@ -212,5 +213,29 @@ export const routes: RouteDef[] = [
     rate: [tokenCheck],
     status: 201,
     handler: ({ deps, params, cred, body }) => E.addCommunity(deps, params.eventId, cred, body),
+  }),
+  def({
+    method: 'GET',
+    path: '/api/meta',
+    auth: null,
+    rate: [tokenCheck],
+    status: 200,
+    handler: async ({ deps }) => D.getMeta(deps),
+  }),
+  def({
+    method: 'DELETE',
+    path: '/api/rooms/:roomId',
+    auth: 'admin',
+    rate: [tokenCheck],
+    status: 204,
+    handler: ({ deps, params, cred }) => D.deleteRoom(deps, params.roomId, cred),
+  }),
+  def({
+    method: 'DELETE',
+    path: '/api/events/:eventId',
+    auth: 'admin',
+    rate: [tokenCheck],
+    status: 204,
+    handler: ({ deps, params, cred }) => D.deleteEvent(deps, params.eventId, cred),
   }),
 ];

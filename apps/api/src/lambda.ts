@@ -5,10 +5,13 @@
  */
 import type { Context as LambdaContext } from 'aws-lambda';
 import { handle } from 'hono/aws-lambda';
+import * as Ops from './application/usecases/deletion.js';
 import { buildContainer, loadConfig, type Container } from './container.js';
 import { createApp } from './presentation/http/app.js';
 
-type Maintenance = { action: 'migrate' | 'purge' | 'close-due' };
+type Action = 'migrate' | 'purge' | 'close-due' | 'stats' | 'delete-test-data' | 'delete-room' | 'delete-event' | 'reset-all';
+type Maintenance = { action: Action; roomId?: string; eventId?: string; prefix?: string; confirm?: string };
+const ACTIONS: readonly string[] = ['migrate', 'purge', 'close-due', 'stats', 'delete-test-data', 'delete-room', 'delete-event', 'reset-all'];
 
 const config = loadConfig();
 const containerPromise: Promise<Container> = buildContainer(config);
@@ -41,9 +44,18 @@ async function getHttpHandler() {
 }
 
 export const handler = async (event: unknown, context: LambdaContext) => {
-  const action = (event as Partial<Maintenance> | null)?.action;
-  if (action === 'migrate' || action === 'purge' || action === 'close-due') {
+  const m = event as Partial<Maintenance> | null;
+  const action = m?.action;
+  // Maintenance events come only from operators with IAM access (aws lambda invoke) or
+  // EventBridge; CloudFront requests are HTTP events and never carry `action`.
+  if (action && ACTIONS.includes(action)) {
     const container = await containerPromise;
+    const deps = container.deps;
+    if (action === 'stats') return Ops.opsStats(deps);
+    if (action === 'delete-test-data') return Ops.opsDeleteTestData(deps, m?.prefix ?? Ops.TEST_DATA_PREFIX);
+    if (action === 'delete-room') return Ops.opsDeleteRoom(deps, String(m?.roomId ?? ''));
+    if (action === 'delete-event') return Ops.opsDeleteEvent(deps, String(m?.eventId ?? ''));
+    if (action === 'reset-all') return Ops.opsResetAll(deps, m?.confirm);
     if (action === 'migrate') return { applied: await container.migrate() };
     if (action === 'close-due') {
       const r = await container.closeDue();

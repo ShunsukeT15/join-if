@@ -155,6 +155,9 @@ const SAMPLE_BODIES: Record<string, (c: Ctx) => unknown> = {
   'GET /api/events/:eventId/admin': () => undefined,
   'PATCH /api/events/:eventId/admin': () => ({ title: 'changed' }),
   'POST /api/events/:eventId/communities': () => ({ name: 'new community' }),
+  'GET /api/meta': () => undefined,
+  'DELETE /api/rooms/:roomId': () => undefined,
+  'DELETE /api/events/:eventId': () => undefined,
 };
 
 describe('authorization: every protected route rejects bad credentials without side effects', () => {
@@ -454,5 +457,37 @@ describe('headers', () => {
     const res = await h.call('GET', '/api/nope');
     expect(res.status).toBe(404);
     expect(res.json.error.code).toBe('not_found');
+  });
+});
+
+describe('deletion', () => {
+  it('deleting a room makes every URL of it stop working', async () => {
+    const h = makeHarness();
+    const { roomId, adminToken, members } = await h.setupRoom(['A']);
+    expect((await h.call('DELETE', `/api/rooms/${roomId}`, { tokens: { admin: adminToken } })).status).toBe(204);
+    expect((await h.call('GET', `/api/rooms/${roomId}/admin`, { tokens: { admin: adminToken } })).status).toBe(404);
+    expect((await h.call('GET', `/api/rooms/${roomId}/me`, { tokens: { member: members.A!.token } })).status).toBe(404);
+    expect(h.uow.dump().members.size).toBe(0);
+    expect(h.uow.dump().answers.size).toBe(0);
+  });
+
+  it('deleting an event deletes all its communities; deleting a community keeps the event', async () => {
+    const h = makeHarness();
+    const ev = await h.setupEvent(['A']);
+    const second = await h.call('POST', `/api/events/${ev.eventId}/communities`, { tokens: { admin: ev.adminToken }, body: { name: 'C2' } });
+    expect((await h.call('DELETE', `/api/rooms/${second.json.roomId}`, { tokens: { admin: ev.adminToken } })).status).toBe(204);
+    const view = await h.call('GET', `/api/events/${ev.eventId}/admin`, { tokens: { admin: ev.adminToken } });
+    expect(view.json.communities.map((c: { name: string }) => c.name)).toEqual(['コミュニティ1']);
+
+    expect((await h.call('DELETE', `/api/events/${ev.eventId}`, { tokens: { admin: ev.adminToken } })).status).toBe(204);
+    expect((await h.call('GET', `/api/rooms/${ev.communityRoomId}/me`, { tokens: { member: ev.members.A!.token } })).status).toBe(404);
+    expect(h.uow.dump().rooms.size).toBe(0);
+    expect(h.uow.dump().events.size).toBe(0);
+  });
+
+  it('meta exposes only the retention settings', async () => {
+    const h = makeHarness();
+    const res = await h.call('GET', '/api/meta');
+    expect(res.json).toEqual({ retention: { afterCloseDays: 30, unclosedDays: 365 } });
   });
 });

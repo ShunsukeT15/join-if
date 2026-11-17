@@ -205,6 +205,16 @@ export interface AddCommunityResponse {
   roomId: string;
 }
 
+/** Public, non-secret service settings (shown in the terms and privacy pages). */
+export interface MetaResponse {
+  retention: {
+    /** Days after the latest close before a room and its answers are deleted. */
+    afterCloseDays: number;
+    /** Days after creation before a room that is never closed is deleted. */
+    unclosedDays: number;
+  };
+}
+
 export interface GroupViewResponse {
   room: RoomInfo;
   members: GroupMember[];

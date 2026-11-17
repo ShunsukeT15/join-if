@@ -37,9 +37,36 @@ function makeTx(s: State): Tx {
     s.rooms.delete(roomId);
   };
 
-  const DAY = 24 * 60 * 60 * 1000;
   return {
+    ops: {
+      async counts() {
+        const rooms = [...s.rooms.values()];
+        return {
+          events: s.events.size,
+          rooms: rooms.length,
+          openRooms: rooms.filter((r) => r.status === 'open').length,
+          members: s.members.size,
+          answers: s.answers.size,
+        };
+      },
+      async findByTitlePrefix(prefix) {
+        return {
+          roomIds: [...s.rooms.values()].filter((r) => r.eventId === null && r.title.startsWith(prefix)).map((r) => r.id),
+          eventIds: [...s.events.values()].filter((e) => e.title.startsWith(prefix)).map((e) => e.id),
+        };
+      },
+      async deleteAll() {
+        const result = { events: s.events.size, rooms: s.rooms.size };
+        for (const id of [...s.rooms.keys()]) deleteRoomCascade(id);
+        s.events.clear();
+        return result;
+      },
+    },
     events: {
+      async delete(id) {
+        for (const r of [...s.rooms.values()]) if (r.eventId === id) deleteRoomCascade(r.id);
+        s.events.delete(id);
+      },
       async insert(event) {
         if (s.events.has(event.id)) throw new Error('duplicate event id');
         s.events.set(event.id, clone(event));
@@ -52,10 +79,10 @@ function makeTx(s: State): Tx {
         if (!s.events.has(event.id)) throw notFound();
         s.events.set(event.id, clone(event));
       },
-      async deleteExpired(now) {
+      async deleteExpired({ closedBefore, createdBefore }) {
         const hasRooms = (id: string) => [...s.rooms.values()].some((r) => r.eventId === id);
         const expired = [...s.events.values()].filter(
-          (e) => e.purgeAfter <= now || (!hasRooms(e.id) && e.createdAt.getTime() <= now.getTime() - 30 * DAY),
+          (e) => e.createdAt <= createdBefore || (!hasRooms(e.id) && e.createdAt <= closedBefore),
         );
         for (const e of expired) {
           for (const r of [...s.rooms.values()]) if (r.eventId === e.id) deleteRoomCascade(r.id);
@@ -65,6 +92,9 @@ function makeTx(s: State): Tx {
       },
     },
     rooms: {
+      async delete(id) {
+        deleteRoomCascade(id);
+      },
       async listByEvent(eventId) {
         return [...s.rooms.values()]
           .filter((r) => r.eventId === eventId)
@@ -89,8 +119,12 @@ function makeTx(s: State): Tx {
           .filter((r) => r.status === 'open' && r.deadlineAt !== null && r.deadlineAt <= now)
           .map((r) => r.id);
       },
-      async deleteExpired(now) {
-        const expired = [...s.rooms.values()].filter((r) => r.purgeAfter <= now);
+      async deleteExpired({ closedBefore, createdBefore }) {
+        const expired = [...s.rooms.values()].filter((r) =>
+          r.status === 'closed'
+            ? r.closedAt !== null && r.closedAt <= closedBefore
+            : r.createdAt <= createdBefore && (r.closedAt === null || r.closedAt <= closedBefore),
+        );
         for (const r of expired) deleteRoomCascade(r.id);
         return expired.length;
       },

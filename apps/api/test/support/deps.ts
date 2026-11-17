@@ -1,4 +1,5 @@
 import type { Deps } from '../../src/application/deps.js';
+import { DEFAULT_RETENTION } from '../../src/domain/constants.js';
 import type { UnitOfWork } from '../../src/application/ports/persistence.js';
 import type { Clock } from '../../src/application/ports/services.js';
 import {
@@ -29,6 +30,7 @@ export function makeDeps(uow: UnitOfWork = new MemoryUnitOfWork()): TestDeps {
     tokens: new NodeTokenService(generateEncryptionKey()),
     ids: new NodeIdGenerator(),
     clock: new TestClock(),
+    retention: { ...DEFAULT_RETENTION },
   };
 }
 

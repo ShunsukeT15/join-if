@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { UnitOfWork } from '../../src/application/ports/persistence.js';
 import * as A from '../../src/application/usecases/admin.js';
 import { closeDueRooms } from '../../src/application/usecases/closing.js';
+import * as Ops from '../../src/application/usecases/deletion.js';
 import * as E from '../../src/application/usecases/event.js';
 import * as G from '../../src/application/usecases/group.js';
 import * as M from '../../src/application/usecases/member.js';
@@ -233,13 +234,41 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
       }
     });
 
-    it('purges rooms 90 days after closing', async () => {
+    it('purges rooms 30 days (default) after the latest close', async () => {
       await A.closeRoom(d, roomId, admin(adminToken));
-      d.clock.advanceDays(89);
+      d.clock.advanceDays(29);
       expect(await A.purgeExpiredRooms(d)).toBe(0);
       d.clock.advanceDays(2);
       expect(await A.purgeExpiredRooms(d)).toBe(1);
       expect(await code(A.getAdminView(d, roomId, admin(adminToken)))).toBe('not_found');
+    });
+
+    it('counts from the latest close when a room is reopened and closed again', async () => {
+      await A.closeRoom(d, roomId, admin(adminToken));
+      d.clock.advanceDays(20);
+      await A.reopenRoom(d, roomId, admin(adminToken));
+      await A.closeRoom(d, roomId, admin(adminToken));
+      d.clock.advanceDays(20);
+      expect(await A.purgeExpiredRooms(d)).toBe(0);
+      d.clock.advanceDays(11);
+      expect(await A.purgeExpiredRooms(d)).toBe(1);
+    });
+
+    it('a changed retention period applies to existing rooms', async () => {
+      await A.closeRoom(d, roomId, admin(adminToken));
+      d.clock.advanceDays(10);
+      expect(await A.purgeExpiredRooms(d)).toBe(0);
+      d.retention = { ...d.retention, afterCloseDays: 7 };
+      expect(await A.purgeExpiredRooms(d)).toBe(1);
+    });
+
+    it('a reopened room that stays open is kept until the unclosed limit', async () => {
+      await A.closeRoom(d, roomId, admin(adminToken));
+      await A.reopenRoom(d, roomId, admin(adminToken));
+      d.clock.advanceDays(100);
+      expect(await A.purgeExpiredRooms(d)).toBe(0);
+      d.clock.advanceDays(266);
+      expect(await A.purgeExpiredRooms(d)).toBe(1);
     });
 
     it('purges never-closed rooms after a year', async () => {
@@ -511,6 +540,44 @@ export function defineUseCaseSuite(label: string, makeUow: () => Promise<UnitOfW
       d.clock.advanceDays(340);
       await A.purgeExpiredRooms(d);
       expect(await code(E.getEventAdminView(d, eventId, admin(token)))).toBe('not_found');
+    });
+  });
+  describe(`operator maintenance [${label}]`, () => {
+    let d: TestDeps;
+    beforeEach(async () => {
+      d = makeDeps(await makeUow());
+    });
+
+    it('counts, deletes test data by prefix, deletes by id, and resets with a phrase', async () => {
+      const smokeRoom = await A.createRoom(d, { title: '[smoke] room' });
+      const keep = await A.createRoom(d, { title: '本番のルーム' });
+      await A.addMember(d, keep.roomId, admin(keep.adminToken), { name: 'A' });
+      const smokeEvent = await E.createEvent(d, { title: '[smoke] event' });
+      await E.addCommunity(d, smokeEvent.eventId, admin(smokeEvent.adminToken), { name: 'c' });
+      const keepEvent = await E.createEvent(d, { title: '本番のイベント' });
+      // A community named like test data inside a real event is not touched by prefix deletion.
+      await E.addCommunity(d, keepEvent.eventId, admin(keepEvent.adminToken), { name: '[smoke] c' });
+
+      expect(await Ops.opsStats(d)).toEqual({ events: 2, rooms: 4, openRooms: 4, members: 1, answers: 0 });
+      expect(await Ops.opsDeleteTestData(d)).toEqual({ deletedRooms: 1, deletedEvents: 1 });
+      expect(await code(A.getAdminView(d, smokeRoom.roomId, admin(smokeRoom.adminToken)))).toBe('not_found');
+      expect((await Ops.opsStats(d)).rooms).toBe(2);
+
+      expect(await Ops.opsDeleteRoom(d, keep.roomId)).toMatchObject({ deleted: true, title: '本番のルーム' });
+      expect(await Ops.opsDeleteRoom(d, keep.roomId)).toEqual({ deleted: false });
+      expect(await Ops.opsDeleteEvent(d, keepEvent.eventId)).toMatchObject({ deleted: true, communities: 1 });
+
+      await A.createRoom(d, { title: 'x' });
+      await expect(Ops.opsResetAll(d, 'yes')).rejects.toThrow(/DELETE ALL DATA/);
+      expect((await Ops.opsStats(d)).rooms).toBe(1);
+      expect((await Ops.opsResetAll(d, 'DELETE ALL DATA')).deleted.rooms).toBe(1);
+      expect(await Ops.opsStats(d)).toEqual({ events: 0, rooms: 0, openRooms: 0, members: 0, answers: 0 });
+    });
+
+    it('treats % and _ in the prefix literally', async () => {
+      await A.createRoom(d, { title: 'a_b room' });
+      await A.createRoom(d, { title: 'axb room' });
+      expect(await Ops.opsDeleteTestData(d, 'a_b')).toEqual({ deletedRooms: 1, deletedEvents: 0 });
     });
   });
 });

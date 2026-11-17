@@ -7,7 +7,7 @@ import type {
   EventAdminViewResponse,
   UpdateEventRequest,
 } from '@himitsu/contracts';
-import { addDays, LIMITS, RETENTION_UNCLOSED_DAYS } from '../../domain/constants.js';
+import { addDays, LIMITS } from '../../domain/constants.js';
 import { notFound, validation } from '../../domain/errors.js';
 import { normalizeCommunityName, normalizeSettings } from '../../domain/roomRules.js';
 import type { Event } from '../../domain/types.js';
@@ -36,7 +36,7 @@ export async function createEvent(deps: Deps, input: CreateEventRequest): Promis
       message: s.message!,
       adminTokenHash: deps.tokens.hash(adminToken),
       createdAt: now,
-      purgeAfter: addDays(now, RETENTION_UNCLOSED_DAYS),
+      purgeAfter: addDays(now, deps.retention.unclosedDays),
     });
     return { eventId: id, adminToken };
   });

@@ -1,4 +1,4 @@
-import { addDays, RETENTION_AFTER_CLOSE_DAYS } from '../../domain/constants.js';
+import { addDays } from '../../domain/constants.js';
 import { isPastDeadline } from '../../domain/roomRules.js';
 import { solve, type SolverAnswer } from '../../domain/solver.js';
 import type { AuditActor, Room } from '../../domain/types.js';
@@ -24,7 +24,8 @@ export async function closeInTx(deps: Deps, tx: Tx, room: Room, actor: AuditActo
     ...room,
     status: 'closed',
     closedAt: now,
-    purgeAfter: addDays(now, RETENTION_AFTER_CLOSE_DAYS),
+    // Informational: deletion is decided by the current retention policy at purge time.
+    purgeAfter: addDays(now, deps.retention.afterCloseDays),
   };
   await tx.rooms.update(updated);
   await tx.audit.append({ roomId: room.id, memberId: null, actor, action: 'room_closed', createdAt: now });
