@@ -1,4 +1,17 @@
 import { Link } from 'react-router';
+import { useApi } from '../api/ApiProvider';
+import { useLoad } from '../lib/useAsync';
+
+/** Retention days come from the server settings so the text never goes stale. */
+function useRetention() {
+  const api = useApi();
+  const { data } = useLoad('meta', () => api.getMeta());
+  return data?.retention ?? null;
+}
+
+function unclosedText(days: number) {
+  return days % 365 === 0 ? `${days / 365}年` : `${days}日`;
+}
 
 /** Draft terms (spec §9.2). Review before public launch. */
 export function TermsPage() {
@@ -34,6 +47,7 @@ export function TermsPage() {
 }
 
 export function PrivacyPage() {
+  const retention = useRetention();
   return (
     <article className="card legal">
       <h1 className="page-title">プライバシーポリシー</h1>
@@ -50,9 +64,15 @@ export function PrivacyPage() {
       <h2>表示範囲</h2>
       <p>個別の回答内容は、本人以外の利用者には表示しません。サービス運用者は障害対応以外では閲覧しません。</p>
       <h2>保持期間</h2>
-      <p>締め切りから90日後に、ルーム・回答・操作記録を自動で削除します。一度も締め切られないルームは、作成から1年で削除します。</p>
-      <h2>削除の依頼</h2>
-      <p>招待した人はメンバーの削除により、その人の回答を削除できます。その他の削除の依頼は運用者までご連絡ください。</p>
+      <p>
+        {retention
+          ? `最後に締め切ってから${retention.afterCloseDays}日後に、ルーム・メンバー・回答・結果・操作記録を自動で削除します。締め切られないルームは、作成から${unclosedText(retention.unclosedDays)}で削除します。`
+          : '締め切りから一定期間後に、ルーム・メンバー・回答・結果・操作記録を自動で削除します。'}
+      </p>
+      <h2>削除</h2>
+      <p>
+        招待した人（幹事）は、管理画面からルーム・コミュニティ・イベントをいつでも削除できます。削除すると、メンバー・回答・結果はすぐに消去され、すべてのURLが使えなくなります。メンバーの削除で、その人の回答だけを消すこともできます。その他の削除の依頼は運用者までご連絡ください。
+      </p>
       <p>
         <Link to="/terms">利用規約</Link>
       </p>

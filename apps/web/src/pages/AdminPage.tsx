@@ -1,9 +1,10 @@
 import type { AdminMember, AdminViewResponse, UpdateSettingsRequest } from '@himitsu/contracts';
 import { LIMITS } from '@himitsu/contracts';
 import { useState, type FormEvent } from 'react';
-import { Link, useLocation, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { useApi } from '../api/ApiProvider';
 import { ApiError } from '../api/client';
+import { DangerZone } from '../components/DangerZone';
 import { AnsweredPill, AnswerProgress, ErrorView, EventHeader, ResultCard } from '../components/room';
 import { CopyButton, Notice, Spinner, UrlBox, useConfirm, useToast } from '../components/ui';
 import {
@@ -25,6 +26,7 @@ export function AdminPage() {
   const token = tokenFromHash(location.hash);
   const justCreated = Boolean((location.state as { justCreated?: boolean } | null)?.justCreated);
   const api = useApi();
+  const navigate = useNavigate();
   const toast = useToast();
   const { ask, dialog } = useConfirm();
   const { data, setData, error, loading, reload } = useLoad(`${roomId}:${token}`, () => api.getAdminView(roomId, token));
@@ -277,6 +279,27 @@ export function AdminPage() {
           </>
         )}
       </section>
+
+      <DangerZone
+        title={data.event ? 'コミュニティの削除' : 'ルームの削除'}
+        description={
+          data.event
+            ? 'このコミュニティのメンバー・回答・結果をすべて削除します。招待URLと回答用URLは使えなくなります。イベントと他のコミュニティは残ります。'
+            : 'このルームのメンバー・回答・結果をすべて削除します。管理用URL・招待URL・回答用URLはすべて使えなくなります。'
+        }
+        buttonLabel={data.event ? 'このコミュニティを削除' : 'このルームを削除'}
+        confirmName={data.event ? (data.room.communityName ?? '') : data.room.title}
+        onDelete={async () => {
+          try {
+            await api.deleteRoom(roomId, token);
+            toast('削除しました');
+            if (data.event) navigate(`/e/${data.event.id}/admin#${token}`, { replace: true });
+            else navigate('/', { replace: true, state: { deleted: true } });
+          } catch (e) {
+            toast(e instanceof ApiError ? e.message : '削除できませんでした');
+          }
+        }}
+      />
 
       {!justCreated && (
         <section className="card stack">

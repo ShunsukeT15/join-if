@@ -5,6 +5,7 @@ import type {
   CreateEventRequest,
   CreateEventResponse,
   EventAdminViewResponse,
+  MetaResponse,
   UpdateEventRequest,
   AdminViewResponse,
   ClaimResponse,
@@ -41,6 +42,9 @@ export interface ApiClient {
   getEventAdminView(eventId: string, adminToken: string): Promise<EventAdminViewResponse>;
   updateEvent(eventId: string, adminToken: string, req: UpdateEventRequest): Promise<EventAdminViewResponse>;
   addCommunity(eventId: string, adminToken: string, req: AddCommunityRequest): Promise<AddCommunityResponse>;
+  deleteRoom(roomId: string, adminToken: string): Promise<void>;
+  deleteEvent(eventId: string, adminToken: string): Promise<void>;
+  getMeta(): Promise<MetaResponse>;
 }
 
 export class ApiError extends Error {
@@ -158,6 +162,15 @@ export class HttpApiClient implements ApiClient {
   }
   addCommunity(eventId: string, admin: string, req: AddCommunityRequest) {
     return this.request<AddCommunityResponse>('POST', `/api/events/${enc(eventId)}/communities`, { admin }, req);
+  }
+  deleteRoom(roomId: string, admin: string) {
+    return this.request<void>('DELETE', `/api/rooms/${enc(roomId)}`, { admin });
+  }
+  deleteEvent(eventId: string, admin: string) {
+    return this.request<void>('DELETE', `/api/events/${enc(eventId)}`, { admin });
+  }
+  getMeta() {
+    return this.request<MetaResponse>('GET', '/api/meta');
   }
 }
 

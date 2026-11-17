@@ -231,6 +231,19 @@ select {
   color: #fff;
 }
 
+.btn--danger-outline {
+  background: var(--surface);
+  border-color: #f0c6c2;
+  color: var(--danger);
+}
+.btn--danger-outline:not(:disabled):hover {
+  background: var(--danger-soft);
+}
+
+.danger-zone {
+  border-color: #f3d6d3;
+}
+
 .btn--ghost {
   background: transparent;
   color: var(--text-2);

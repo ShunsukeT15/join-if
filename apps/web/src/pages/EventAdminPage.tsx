@@ -1,9 +1,10 @@
 import type { CommunitySummary, EventAdminViewResponse, InviteMode } from '@himitsu/contracts';
 import { LIMITS } from '@himitsu/contracts';
 import { useState, type FormEvent } from 'react';
-import { Link, useLocation, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { useApi } from '../api/ApiProvider';
 import { ApiError } from '../api/client';
+import { DangerZone } from '../components/DangerZone';
 import { ErrorView } from '../components/room';
 import { Notice, Spinner, UrlBox, useToast } from '../components/ui';
 import { formatDeadline, fromLocalInput, urls } from '../lib/format';
@@ -20,6 +21,7 @@ export function EventAdminPage() {
   const token = tokenFromHash(location.hash);
   const justCreated = Boolean((location.state as { justCreated?: boolean } | null)?.justCreated);
   const api = useApi();
+  const navigate = useNavigate();
   const toast = useToast();
   const { data, setData, error, loading, reload } = useLoad(`${eventId}:${token}`, () =>
     api.getEventAdminView(eventId, token),
@@ -90,6 +92,22 @@ export function EventAdminPage() {
       )}
 
       {data.attendees.length > 0 && <Attendees data={data} />}
+
+      <DangerZone
+        title="イベントの削除"
+        description="イベントと、すべてのコミュニティのメンバー・回答・結果を削除します。すべてのURLが使えなくなります。"
+        buttonLabel="このイベントを削除"
+        confirmName={data.event.title}
+        onDelete={async () => {
+          try {
+            await api.deleteEvent(eventId, token);
+            toast('削除しました');
+            navigate('/', { replace: true, state: { deleted: true } });
+          } catch (e) {
+            toast(e instanceof ApiError ? e.message : '削除できませんでした');
+          }
+        }}
+      />
 
       {!justCreated && (
         <section className="card stack">

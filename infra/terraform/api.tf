@@ -59,6 +59,9 @@ resource "aws_lambda_function" "api" {
       CORS_ORIGINS         = "" # same origin via CloudFront
       ORIGIN_VERIFY_HEADER = "X-Origin-Verify"
       ORIGIN_VERIFY_SECRET = random_password.origin_verify.result
+      # Data retention (spec §7.5); applied by the daily purge to existing rooms as well.
+      RETENTION_AFTER_CLOSE_DAYS = tostring(var.retention_after_close_days)
+      RETENTION_UNCLOSED_DAYS    = tostring(var.retention_unclosed_days)
     }
   }
 

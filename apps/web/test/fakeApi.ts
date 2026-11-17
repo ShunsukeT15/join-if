@@ -23,6 +23,9 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     getEventAdminView: unimplemented(),
     updateEvent: unimplemented(),
     addCommunity: unimplemented(),
+    deleteRoom: unimplemented(),
+    deleteEvent: unimplemented(),
+    getMeta: vi.fn(() => Promise.resolve({ retention: { afterCloseDays: 30, unclosedDays: 365 } })),
     ...overrides,
   };
 }

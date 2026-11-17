@@ -57,6 +57,26 @@ variable "lambda_zip_source_dir" {
   default     = "../../apps/api/dist/lambda"
 }
 
+variable "retention_after_close_days" {
+  description = "Days after a room's latest close before its data (members, answers, result) is deleted"
+  type        = number
+  default     = 30
+  validation {
+    condition     = var.retention_after_close_days >= 1 && var.retention_after_close_days <= 3650
+    error_message = "retention_after_close_days must be between 1 and 3650."
+  }
+}
+
+variable "retention_unclosed_days" {
+  description = "Days after creation before a room that is never closed is deleted"
+  type        = number
+  default     = 365
+  validation {
+    condition     = var.retention_unclosed_days >= 1 && var.retention_unclosed_days <= 3650
+    error_message = "retention_unclosed_days must be between 1 and 3650."
+  }
+}
+
 variable "log_retention_days" {
   type    = number
   default = 14

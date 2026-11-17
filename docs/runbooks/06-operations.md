@@ -28,7 +28,7 @@ aws lambda get-function --function-name himitsu-prod-api \
 
 | 処理 | タイミング | 手動実行 |
 | --- | --- | --- |
-| 期限切れルームの削除（締切90日後 / 未締切1年後）と回数制限カウンタの掃除 | 毎日 03:17 JST（EventBridge） | 下記 |
+| 期限切れルームの削除（最後の締切から30日後 / 未締切1年後。日数は設定可能）と回数制限カウンタの掃除 | 毎日 03:17 JST（EventBridge） | 下記 |
 | 自動締め切り（締切日時を過ぎたルームを締め切って集計） | 5分ごと（EventBridge）。画面を開いたときにも実行 | `aws lambda invoke --function-name himitsu-prod-api --cli-binary-format raw-in-base64-out --payload '{"action":"close-due"}' /dev/stdout` |
 | RDS の自動バックアップ（7日保持） | 毎日 03:00〜03:30 JST | — |
 | RDS のマイナーバージョン更新 | 日曜 04:00〜04:30 JST | — |
@@ -47,6 +47,37 @@ RDS はプライベートサブネットにあり、インターネットから�
 
 - AWS CloudShell の VPC 環境を `himitsu-prod-vpc` に作成し、`himitsu-prod-lambda` セキュリティグループを付けて `psql` で接続
 - 接続情報は `terraform -chdir=infra/terraform state show aws_db_instance.main` と Lambda の環境変数 `DATABASE_URL`
+
+## データの保持期間
+
+| 設定（Terraform 変数） | 既定値 | 内容 |
+| --- | --- | --- |
+| `retention_after_close_days` | 30 | 最後に締め切ってから、この日数でルーム・メンバー・回答・結果・操作記録を削除 |
+| `retention_unclosed_days` | 365 | 締め切られないルームは、作成からこの日数で削除 |
+
+変更は `infra/terraform/terraform.tfvars` に書いて `npm run release`。**毎日の自動削除のたびに今の設定で判定する**ので、日数を短くすると既存のルームにもすぐ適用されます（次の自動削除で消える）。
+画面のプライバシーポリシーの日数も自動で変わります。保持期間は費用にはほぼ影響しません（[AWS_COST_ESTIMATE.md](../AWS_COST_ESTIMATE.md)）。
+
+## データの削除
+
+### 幹事が画面から削除する
+
+管理画面の一番下の「このルーム（コミュニティ／イベント）を削除」。誤操作を防ぐため、名前の入力が必要です。削除するとすぐにデータが消え、すべての URL が使えなくなります。
+
+### 運用者がコマンドで削除する（AWS の権限が必要）
+
+```bash
+npm run ops -- stats                      # データ件数（イベント・ルーム・メンバー・回答）
+npm run ops -- delete-test-data           # タイトルが [smoke] で始まるルーム・イベントを削除（スモークテストのデータ）
+npm run ops -- delete-test-data "[test]"  # 別の接頭辞を指定
+npm run ops -- delete-room <roomId>       # ルーム（コミュニティ）を1つ削除。roomId は URL の /r/<roomId>/ の部分
+npm run ops -- delete-event <eventId>     # イベントと配下のコミュニティを削除。eventId は URL の /e/<eventId>/ の部分
+npm run ops -- reset-all                  # 全データを削除（公開前の初期化用）。DELETE ALL DATA と入力が必要
+```
+
+- 削除系は実行前に確認を求めます（`--yes` で省略。`reset-all` の合言葉は省略できません）。
+- これらは Lambda を直接呼び出す運用者専用の操作で、インターネット（CloudFront）からは呼べません。
+- 削除したデータは戻せません。RDS の自動バックアップ（7日）からの復元は、DB 全体を過去の時点に戻す操作になります（下記「DB の復元」）。
 
 ## 秘密情報
 

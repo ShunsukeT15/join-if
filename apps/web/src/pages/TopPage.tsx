@@ -1,7 +1,7 @@
 import type { InviteMode } from '@himitsu/contracts';
 import { LIMITS } from '@himitsu/contracts';
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useApi } from '../api/ApiProvider';
 import { ApiError } from '../api/client';
 import { Notice } from '../components/ui';
@@ -23,6 +23,7 @@ const MODES: { value: InviteMode; title: string; body: string }[] = [
 export function TopPage() {
   const api = useApi();
   const navigate = useNavigate();
+  const deleted = Boolean((useLocation().state as { deleted?: boolean } | null)?.deleted);
   const [title, setTitle] = useState('');
   const [deadlineText, setDeadlineText] = useState('');
   const [deadlineLocal, setDeadlineLocal] = useState('');
@@ -59,6 +60,8 @@ export function TopPage() {
 
   return (
     <>
+      {deleted && <Notice tone="success">削除しました。データはすべて消去され、URL はもう使えません。</Notice>}
+
       <section className="hero">
         <h1>
           <span className="hero__quote">「〇〇さんが来るなら行く」</span>

@@ -13,6 +13,8 @@
 | `RATE_LIMIT` | `memory` | `memory`（プロセス内）/ `postgres`（全インスタンス共有）/ `off`（開発用） |
 | `CORS_ORIGINS` | `http://localhost:5173` | 画面と API が別オリジンのとき、画面のオリジンをカンマ区切りで。同一オリジンなら空 |
 | `TRUST_PROXY` | `false` | `true` なら `X-Forwarded-For` を接続元として使う（ローカル起動時のみ） |
+| `RETENTION_AFTER_CLOSE_DAYS` | `30` | 最後の締め切りからデータを削除するまでの日数（1〜3650） |
+| `RETENTION_UNCLOSED_DAYS` | `365` | 締め切られないルームを作成から削除するまでの日数（1〜3650） |
 | `PURGE_INTERVAL_MS` | `21600000`（6時間） | ローカル起動時の自動削除の間隔（Lambda では EventBridge が実行） |
 | `ORIGIN_VERIFY_SECRET` | — | 設定すると、`ORIGIN_VERIFY_HEADER` にこの値がないリクエストを 404 にする |
 | `ORIGIN_VERIFY_HEADER` | `X-Origin-Verify` | 上記のヘッダー名 |
@@ -43,6 +45,8 @@ AWS では Lambda の環境変数を Terraform（`infra/terraform/api.tf`）が�
 | `db_deletion_protection` | `true` | RDS の削除保護 |
 | `lambda_memory_mb` | `512` | Lambda のメモリ |
 | `lambda_runtime` | `nodejs22.x` | Lambda のランタイム |
+| `retention_after_close_days` | `30` | 最後の締め切りからデータを削除するまでの日数 |
+| `retention_unclosed_days` | `365` | 締め切られないルームを削除するまでの日数 |
 | `log_retention_days` | `14` | ログの保持日数 |
 | `budget_alert_email` | `""` | 予算アラートの通知先（空なら作らない） |
 | `monthly_budget_usd` | `40` | 月額予算 |

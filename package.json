@@ -14,7 +14,8 @@
     "smoke": "node infra/scripts/smoke-test.mjs",
     "doctor": "infra/scripts/doctor.sh",
     "release": "infra/scripts/release.sh",
-    "setup:aws": "infra/scripts/setup-aws.sh"
+    "setup:aws": "infra/scripts/setup-aws.sh",
+    "ops": "infra/scripts/ops.sh"
   },
   "engines": {
     "node": ">=22"

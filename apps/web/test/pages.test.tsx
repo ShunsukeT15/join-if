@@ -311,3 +311,35 @@ describe('Events', () => {
     expect(addCommunity).toHaveBeenCalledWith('e1', 'EAT', { name: 'サークル', inviteMode: 'group', deadlineAt: null });
   });
 });
+
+describe('Deletion and retention text', () => {
+  const adminView = {
+    room: { title: '同窓会', deadlineText: '', message: '', status: 'open' as const, inviteMode: 'individual' as const, deadlineAt: null, communityName: null },
+    members: [],
+    unansweredCount: 0,
+    result: null,
+  };
+
+  it('deletes a room only after typing its name', async () => {
+    const user = userEvent.setup();
+    const deleteRoom = vi.fn().mockResolvedValue(undefined);
+    const api = fakeApi({ getAdminView: vi.fn().mockResolvedValue(adminView), deleteRoom });
+    renderAt('/r/r9/admin#AT', api);
+    await user.click(await screen.findByRole('button', { name: 'このルームを削除' }));
+    const confirm = screen.getByRole('button', { name: '削除する' }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    await user.type(screen.getByLabelText('確認のための名前'), '同窓');
+    expect(confirm.disabled).toBe(true);
+    await user.type(screen.getByLabelText('確認のための名前'), '会');
+    await user.click(confirm);
+    expect(deleteRoom).toHaveBeenCalledWith('r9', 'AT');
+    expect(await screen.findByText(/削除しました。データはすべて消去され/)).toBeTruthy();
+  });
+
+  it('privacy page shows the configured retention', async () => {
+    const api = fakeApi({ getMeta: vi.fn().mockResolvedValue({ retention: { afterCloseDays: 30, unclosedDays: 365 } }) });
+    renderAt('/privacy', api);
+    expect(await screen.findByText(/最後に締め切ってから30日後に/)).toBeTruthy();
+    expect(screen.getByText(/作成から1年で削除/)).toBeTruthy();
+  });
+});
